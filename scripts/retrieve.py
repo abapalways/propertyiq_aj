@@ -2,7 +2,10 @@
 # --- Load environment variables (same as ingest.py) ---
 from dotenv import load_dotenv
 load_dotenv("../.env")
-
+# %%
+# --- Import the reusable search function ---
+# %%
+from search import search_listings
 # %%
 # --- Recreate the embeddings object (must match what built the index) ---
 from langchain_ollama import OllamaEmbeddings
@@ -55,6 +58,26 @@ filtered_vectorstore = FAISS.from_documents(candidates, embeddings)
 
 results = filtered_vectorstore.similarity_search("good school", k=3)
 
+for i, doc in enumerate(results, 1):
+    print(f"--- Result {i} ---")
+    print(doc.metadata.get("listing_id"), doc.metadata.get("price"), doc.metadata.get("bedrooms"))
+    print(doc.page_content[:150])
+    print()
+
+
+# %%
+import json
+
+with open("../data/buyer_profiles.json") as f:
+    buyer_profiles = json.load(f)
+
+torres = buyer_profiles[0]  # B001
+print(f"Testing buyer: {torres['name']}")
+print(f"Preferences: {torres['preferences']}")
+
+results = search_listings(torres["preferences"], vectorstore, embeddings, k=3)
+
+print(f"\n{len(results)} results returned:\n")
 for i, doc in enumerate(results, 1):
     print(f"--- Result {i} ---")
     print(doc.metadata.get("listing_id"), doc.metadata.get("price"), doc.metadata.get("bedrooms"))
