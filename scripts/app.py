@@ -1,3 +1,5 @@
+import os
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 import json
 from dotenv import load_dotenv
 from langchain_ollama import OllamaEmbeddings
