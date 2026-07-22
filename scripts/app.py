@@ -2,15 +2,14 @@ import os
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 import json
 from dotenv import load_dotenv
-from langchain_ollama import OllamaEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from search import search_listings
 import gradio as gr
 
 load_dotenv("../.env")
 
-# --- One-time setup: load everything the app needs, before the UI starts ---
-embeddings = OllamaEmbeddings(model="nomic-embed-text")
+embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001")
 vectorstore = FAISS.load_local("../faiss_index", embeddings, allow_dangerous_deserialization=True)
 
 with open("../data/buyer_profiles.json") as f:
@@ -20,7 +19,6 @@ buyer_names = [buyer.get("name") for buyer in buyer_profiles]
 
 
 def get_shortlist(buyer_name):
-    """Given a buyer's name (selected from dropdown), return a formatted shortlist string."""
     buyer = [b for b in buyer_profiles if b.get("name") == buyer_name][0]
     results = search_listings(buyer["preferences"], vectorstore, embeddings, k=3)
 

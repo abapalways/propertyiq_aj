@@ -54,6 +54,45 @@ negation/must-have detection.
   is reliable — this needs exact metadata filtering, not similarity scoring,
   regardless of model sophistication.
 
-## Next: Model 3 — mxbai-embed-large
+## Model 3: gemini-embedding-001 — final conclusion
 
-(to be tested)
+Initial testing showed gemini-embedding-001 alone outperformed both
+nomic-embed-text and bge-m3 on relevance ranking, but a full buyer sweep
+revealed a critical gap: for queries with no hard filter narrowing the
+candidate pool first (e.g. Henderson's "top-tier schools" with no garage
+requirement), Gemini alone still ranked the worst-rated school district
+(L_MAPLE_105, 4/10) at #1 — the same sentiment/polarity failure seen
+with every other bi-encoder tested tonight.
+
+Adding a HyDE + cross-encoder pass specifically for this scenario fixed
+it: L_PINE_101 (best stated rating context) moved to #1, L_MAPLE_105
+dropped out of the top 5 entirely, and L_PECAN_108 (10/10, highest
+stated rating) surfaced in the top 3 for the first time all night.
+
+### Final architecture (implemented in search.py)
+
+Conditional pipeline based on whether a hard filter (garage/yard)
+already ran:
+
+- **Hard filter applied** → plain Gemini embedding similarity search
+  (fast, deterministic, proven sufficient — Torres test)
+- **No hard filter applied** → full HyDE + Gemini + cross-encoder pass
+  (slower, non-deterministic, but corrects the sentiment/polarity
+  weakness that plain embeddings cannot solve — Henderson test)
+
+This is a genuinely evidence-backed design: each path was chosen based
+on a specific, reproducible test result, not a blanket "safer to always
+use the heavy pipeline" assumption. The lighter path is used wherever
+it has been proven adequate, keeping the system fast and predictable
+by default.
+
+### Remaining known limitations
+
+- Full-pipeline path is non-deterministic (HyDE regenerates text via
+  LLM call each run) — same buyer can get slightly different results
+  run to run when no hard filter applies.
+- has_private_yard regex under-extracts some valid yard descriptions
+  (e.g. L_SPRUCE_106), causing false exclusions for yard-requiring buyers.
+- Cross-encoder re-ranking is not perfectly calibrated by degree of
+  quality — it reliably avoids the worst option but doesn't always
+  surface the single best one at #1.

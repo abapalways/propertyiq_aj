@@ -82,9 +82,14 @@ for doc in documents:
     print(doc.metadata)
 # %%
 # --- Embed a test document, confirm model + LangSmith tracing work ---
-from langchain_ollama import OllamaEmbeddings
+# from langchain_ollama import OllamaEmbeddings
 
-embeddings = OllamaEmbeddings(model="nomic-embed-text")
+# Old:
+# embeddings = OllamaEmbeddings(model="nomic-embed-text")
+
+# New:
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001")
 
 test_vector = embeddings.embed_query(documents[0].page_content)
 print(f"Vector length: {len(test_vector)}")

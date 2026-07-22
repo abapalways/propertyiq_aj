@@ -1,11 +1,18 @@
 """
 Core search logic: takes buyer preferences + a vector store, 
 returns a ranked shortlist of matching listings.
+
+Uses a conditional pipeline: if hard filters (garage, yard) already 
+narrowed the candidate pool, plain embedding similarity is sufficient. 
+If no hard filter applies, the query relies entirely on fuzzy judgment 
+(e.g. "top-tier schools"), so a HyDE + cross-encoder pass is added to 
+correct for embeddings' weak sentiment/quality discrimination.
 """
 
 import os
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
+import numpy as np
 from langchain_community.vectorstores import FAISS
 from langchain_ollama import ChatOllama
 from sentence_transformers import CrossEncoder
@@ -28,17 +35,16 @@ def _matches_checkable(must_have_text):
     return None
 
 
+def _cosine_similarity(a, b):
+    a, b = np.array(a), np.array(b)
+    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+
+
 def _generate_hyde_text(query):
     prompt = f"""Write exactly 1-2 sentences describing a home that matches 
 this buyer request: "{query}". Write it in natural real-estate listing style. 
 No headers, no bullet points, no explanations."""
     return _llm.invoke(prompt).content
-
-
-def _cosine_similarity(vec_a, vec_b):
-    import numpy as np
-    vec_a, vec_b = np.array(vec_a), np.array(vec_b)
-    return np.dot(vec_a, vec_b) / (np.linalg.norm(vec_a) * np.linalg.norm(vec_b))
 
 
 def search_listings(buyer_preferences, vectorstore, embeddings, k=3):
@@ -53,12 +59,14 @@ def search_listings(buyer_preferences, vectorstore, embeddings, k=3):
         and doc.metadata.get("bedrooms") >= min_bedrooms
     ]
 
+    hard_filter_applied = False
     fuzzy_must_haves = []
     for mh in must_haves:
         match = _matches_checkable(mh)
         if match:
             key, check_fn = match
             candidates = [doc for doc in candidates if check_fn(doc.metadata.get(key))]
+            hard_filter_applied = True
         else:
             fuzzy_must_haves.append(mh)
 
@@ -69,16 +77,24 @@ def search_listings(buyer_preferences, vectorstore, embeddings, k=3):
         return candidates[:k]
 
     fuzzy_query = " ".join(fuzzy_must_haves)
-    hyde_text = _generate_hyde_text(fuzzy_query)
 
+    if hard_filter_applied:
+        # Simple path: a hard filter already reduced risk of a bad match dominating
+        filtered_vectorstore = FAISS.from_documents(candidates, embeddings)
+        results = filtered_vectorstore.similarity_search(fuzzy_query, k=k)
+        return results
+
+    # No hard filter applied - full pipeline to guard against sentiment/quality errors
+    hyde_text = _generate_hyde_text(fuzzy_query)
     hyde_vector = embeddings.embed_query(hyde_text)
-    cosine_scored = []
+
+    scored = []
     for doc in candidates:
-        doc_vector = embeddings.embed_query(doc.page_content)
+        doc_vector = embeddings.embed_documents([doc.page_content])[0]
         sim = _cosine_similarity(hyde_vector, doc_vector)
-        cosine_scored.append((sim, doc))
-    cosine_scored.sort(key=lambda x: x[0], reverse=True)
-    narrowed = [doc for sim, doc in cosine_scored]
+        scored.append((sim, doc))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    narrowed = [doc for sim, doc in scored]
 
     pairs = [[hyde_text, doc.page_content] for doc in narrowed]
     cross_scores = _cross_encoder.predict(pairs)

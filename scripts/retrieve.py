@@ -535,3 +535,87 @@ cross_scores_diag = cross_encoder.predict(pairs_diag)
 final_diag = sorted(zip(cross_scores_diag, narrowed_diag), key=lambda x: x[0], reverse=True)
 for rank, (score, doc) in enumerate(final_diag, 1):
     print(f"  #{rank} {doc.metadata.get('listing_id'):15} cross_score={score:.4f}  {get_school_line(doc.page_content)}")
+
+    # %%
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+
+embeddings_gemini = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001")
+
+test_vec = embeddings_gemini.embed_query("good schools")
+print(f"Vector length: {len(test_vec)}")
+# %%# %%
+query_vector_gemini = embeddings_gemini.embed_query("good schools")
+
+scored_gemini = []
+for doc in candidates:
+    doc_vector = embeddings_gemini.embed_query(doc.page_content)
+    sim = cosine_similarity(query_vector_gemini, doc_vector)
+    scored_gemini.append((sim, doc))
+
+scored_gemini.sort(key=lambda x: x[0], reverse=True)
+
+print("Gemini (gemini-embedding-001) ranking, query: 'good schools'\n")
+for rank, (sim, doc) in enumerate(scored_gemini, 1):
+    listing_id = doc.metadata.get("listing_id")
+    marker = "  <-- L_PINE_101" if listing_id == "L_PINE_101" else ""
+    print(f"#{rank} {listing_id} — sim={sim:.4f}{marker}")
+
+# %%
+# %%
+full_query_gemini = "3-bed homes under $450K near good schools"
+full_query_vector_gemini = embeddings_gemini.embed_query(full_query_gemini)
+
+scored_all_gemini = []
+for doc in all_docs:
+    doc_vector = embeddings_gemini.embed_query(doc.page_content)
+    sim = cosine_similarity(full_query_vector_gemini, doc_vector)
+    scored_all_gemini.append((sim, doc))
+
+scored_all_gemini.sort(key=lambda x: x[0], reverse=True)
+
+print(f"Gemini full ranking, all 10 listings, query: '{full_query_gemini}'\n")
+for rank, (sim, doc) in enumerate(scored_all_gemini, 1):
+    listing_id = doc.metadata.get("listing_id")
+    price = doc.metadata.get("price")
+    bedrooms = doc.metadata.get("bedrooms")
+    marker = "  <-- L_PINE_101" if listing_id == "L_PINE_101" else ""
+    print(f"#{rank} {listing_id} — sim={sim:.4f} — ${price:,} — {bedrooms} bed{marker}")
+# %%
+# %%
+garage_query_gemini = "3-bed home near good schools with a garage"
+garage_query_vector_gemini = embeddings_gemini.embed_query(garage_query_gemini)
+
+scored_garage_gemini = []
+for doc in candidates:
+    doc_vector = embeddings_gemini.embed_query(doc.page_content)
+    sim = cosine_similarity(garage_query_vector_gemini, doc_vector)
+    scored_garage_gemini.append((sim, doc))
+
+scored_garage_gemini.sort(key=lambda x: x[0], reverse=True)
+
+print(f"Gemini ranking, query: '{garage_query_gemini}'\n")
+for rank, (sim, doc) in enumerate(scored_garage_gemini, 1):
+    listing_id = doc.metadata.get("listing_id")
+    garage = doc.metadata.get("garage_spaces")
+    marker = "  <-- L_BIRCH_110 (NO GARAGE)" if listing_id == "L_BIRCH_110" else ""
+    print(f"#{rank} {listing_id} — sim={sim:.4f} — garage_spaces={garage}{marker}")
+# %%
+# %%
+# Gemini alone, on the REAL post-garage-filter candidate pool (Torres scenario)
+query_schools_only = "good school district"
+query_vector_real = embeddings_gemini.embed_query(query_schools_only)
+
+scored_real = []
+for doc in candidates_matching_app:  # already filtered: price, bedrooms>=3, garage>=1
+    doc_vector = embeddings_gemini.embed_query(doc.page_content)
+    sim = cosine_similarity(query_vector_real, doc_vector)
+    scored_real.append((sim, doc))
+
+scored_real.sort(key=lambda x: x[0], reverse=True)
+
+print("Gemini alone, real Torres candidate pool (garage already filtered):\n")
+for rank, (sim, doc) in enumerate(scored_real, 1):
+    listing_id = doc.metadata.get("listing_id")
+    marker = "  <-- L_PINE_101" if listing_id == "L_PINE_101" else ""
+    print(f"#{rank} {listing_id} — sim={sim:.4f}{marker}")
+# %%
