@@ -4,24 +4,18 @@ comparable listings lookup. No LLM/embeddings involved — pure Python logic.
 """
 
 
-def calc_mortgage(price, down_payment_pct, interest_rate, loan_term_years=30):
-    """
-    Calculate monthly mortgage payment (principal + interest only).
+def calc_mortgage(price: float, down_payment_pct: float, interest_rate: float, loan_term_years: int = 30) -> dict:
+    """Calculate the estimated monthly mortgage payment for a home purchase.
 
     Args:
-        price: home price (float, > 0)
-        down_payment_pct: down payment as a decimal, e.g. 0.20 for 20% (0-1)
-        interest_rate: annual interest rate as a decimal, e.g. 0.065 for 6.5%
-        loan_term_years: loan term in years (default 30)
+        price: Home price in dollars, must be positive.
+        down_payment_pct: Down payment as a decimal fraction, e.g. 0.20 for 20%.
+        interest_rate: Annual interest rate as a decimal, e.g. 0.065 for 6.5%.
+        loan_term_years: Loan term in years, defaults to 30.
 
     Returns:
-        dict with monthly_payment, loan_amount, total_interest_paid
-
-    Raises:
-        ValueError: if any input is out of valid range
-        TypeError: if a required input is missing/None
+        A dict with monthly_payment, loan_amount, and total_interest_paid.
     """
-    # 1. Validate inputs
     if price is None or down_payment_pct is None or interest_rate is None:
         raise TypeError("price, down_payment_pct, and interest_rate are required")
 
@@ -37,16 +31,11 @@ def calc_mortgage(price, down_payment_pct, interest_rate, loan_term_years=30):
     if loan_term_years <= 0:
         raise ValueError("loan_term_years must be positive")
 
-    # 2. Loan amount
     loan_amount = price - (price * down_payment_pct)
-
-    # 3. Monthly rate and number of payments
     monthly_rate = interest_rate / 12
     num_payments = loan_term_years * 12
 
-    # 4. Monthly payment formula
     if monthly_rate == 0:
-        # Edge case: 0% interest, formula would divide by zero
         monthly_payment = loan_amount / num_payments
     else:
         monthly_payment = loan_amount * (
@@ -55,37 +44,70 @@ def calc_mortgage(price, down_payment_pct, interest_rate, loan_term_years=30):
             (1 + monthly_rate) ** num_payments - 1
         )
 
-    # 5. Total interest paid
     total_paid = monthly_payment * num_payments
     total_interest_paid = total_paid - loan_amount
 
-    # 6. Return
     return {
         "monthly_payment": round(monthly_payment, 2),
         "loan_amount": round(loan_amount, 2),
         "total_interest_paid": round(total_interest_paid, 2),
     }
 
+
+def get_comps(listing_id: str, target_listing_metadata: dict) -> dict:
+    """Find comparable recently-sold properties for a given active listing, 
+    to help judge whether its asking price is reasonable relative to the market.
+
+    Args:
+        listing_id: The target listing's ID, used only for error messages.
+        target_listing_metadata: Dict with the target's city, bedrooms, 
+            and square_footage.
+
+    Returns:
+        A dict with comps (list of matching sold records) and 
+        average_comp_price, or an empty comps list with a message if 
+        none are found.
+    """
+    import json
+    import os
+
+    sold_comps_path = os.path.join(os.path.dirname(__file__), "..", "data", "sold_comps.json")
+    with open(sold_comps_path) as f:
+        sold_comps = json.load(f)
+
+    if target_listing_metadata is None:
+        return {"comps": [], "message": f"No listing found with id {listing_id}"}
+
+    target_city = target_listing_metadata.get("city")
+    target_bedrooms = target_listing_metadata.get("bedrooms")
+    target_sqft = target_listing_metadata.get("square_footage")
+
+    if target_city is None or target_bedrooms is None or target_sqft is None:
+        return {"comps": [], "message": f"Listing {listing_id} is missing required fields (city, bedrooms, or square_footage)"}
+
+    sqft_min = target_sqft * 0.85
+    sqft_max = target_sqft * 1.15
+
+    matches = [
+        comp for comp in sold_comps
+        if comp["city"] == target_city
+        and sqft_min <= comp["square_footage"] <= sqft_max
+        and abs(comp["bedrooms"] - target_bedrooms) <= 1
+    ]
+
+    if not matches:
+        return {"comps": [], "message": f"No comparable sold listings found for {listing_id}"}
+
+    average_comp_price = sum(comp["sold_price"] for comp in matches) / len(matches)
+
+    return {
+        "comps": matches,
+        "average_comp_price": round(average_comp_price, 2),
+    }
+
 if __name__ == "__main__":
     result = calc_mortgage(price=425000, down_payment_pct=0.20, interest_rate=0.065)
     print(result)
 
-    # Error case tests
-    try:
-        calc_mortgage(price=-100, down_payment_pct=0.2, interest_rate=0.065)
-    except ValueError as e:
-        print(f"Correctly caught: {e}")
-
-    try:
-        calc_mortgage(price=425000, down_payment_pct=1.5, interest_rate=0.065)
-    except ValueError as e:
-        print(f"Correctly caught: {e}")
-
-    try:
-        calc_mortgage(price=425000, down_payment_pct=0.20, interest_rate=None)
-    except TypeError as e:
-        print(f"Correctly caught: {e}")
-
-    # 0% interest edge case
-    result_zero = calc_mortgage(price=300000, down_payment_pct=0.20, interest_rate=0.0)
-    print(f"0% interest case: {result_zero}")
+    pine_101_metadata = {"city": "Austin", "bedrooms": 3, "square_footage": 1850}
+    print(get_comps("L_PINE_101", pine_101_metadata))

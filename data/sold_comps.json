@@ -1,0 +1,74 @@
+[
+  {
+    "comp_id": "SOLD_001",
+    "city": "Austin",
+    "bedrooms": 3,
+    "bathrooms": 2,
+    "square_footage": 1820,
+    "sold_price": 418000,
+    "sold_date": "2026-05-12"
+  },
+  {
+    "comp_id": "SOLD_002",
+    "city": "Austin",
+    "bedrooms": 3,
+    "bathrooms": 2.5,
+    "square_footage": 1900,
+    "sold_price": 435000,
+    "sold_date": "2026-04-28"
+  },
+  {
+    "comp_id": "SOLD_003",
+    "city": "Austin",
+    "bedrooms": 3,
+    "bathrooms": 2,
+    "square_footage": 1750,
+    "sold_price": 410000,
+    "sold_date": "2026-06-02"
+  },
+  {
+    "comp_id": "SOLD_004",
+    "city": "Austin",
+    "bedrooms": 4,
+    "bathrooms": 2,
+    "square_footage": 2050,
+    "sold_price": 445000,
+    "sold_date": "2026-03-15"
+  },
+  {
+    "comp_id": "SOLD_005",
+    "city": "Austin",
+    "bedrooms": 2,
+    "bathrooms": 1.5,
+    "square_footage": 1250,
+    "sold_price": 380000,
+    "sold_date": "2026-05-30"
+  },
+  {
+    "comp_id": "SOLD_006",
+    "city": "Austin",
+    "bedrooms": 3,
+    "bathrooms": 2,
+    "square_footage": 1600,
+    "sold_price": 390000,
+    "sold_date": "2026-06-10"
+  },
+  {
+    "comp_id": "SOLD_007",
+    "city": "Austin",
+    "bedrooms": 3,
+    "bathrooms": 2,
+    "square_footage": 1780,
+    "sold_price": 460000,
+    "sold_date": "2026-04-05"
+  },
+  {
+    "comp_id": "SOLD_008",
+    "city": "Round Rock",
+    "bedrooms": 3,
+    "bathrooms": 2,
+    "square_footage": 1850,
+    "sold_price": 405000,
+    "sold_date": "2026-05-20"
+  }
+]
