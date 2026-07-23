@@ -45,10 +45,13 @@ def _generate_hyde_text(query):
 this buyer request: "{query}". Write it in natural real-estate listing style. 
 No headers, no bullet points, no explanations."""
     return _llm.invoke(prompt).content
+def search_listings(buyer_preferences, vectorstore, embeddings, k=3, rejected_listing_ids=None):
+    if rejected_listing_ids is None:
+        rejected_listing_ids = []
 
-
-def search_listings(buyer_preferences, vectorstore, embeddings, k=3):
     all_docs = list(vectorstore.docstore._dict.values())
+    all_docs = [doc for doc in all_docs if doc.metadata.get("listing_id") not in rejected_listing_ids]
+
     max_budget = buyer_preferences["max_budget"]
     min_bedrooms = buyer_preferences["min_bedrooms"]
     must_haves = buyer_preferences.get("must_haves", [])
@@ -79,12 +82,10 @@ def search_listings(buyer_preferences, vectorstore, embeddings, k=3):
     fuzzy_query = " ".join(fuzzy_must_haves)
 
     if hard_filter_applied:
-        # Simple path: a hard filter already reduced risk of a bad match dominating
         filtered_vectorstore = FAISS.from_documents(candidates, embeddings)
         results = filtered_vectorstore.similarity_search(fuzzy_query, k=k)
         return results
 
-    # No hard filter applied - full pipeline to guard against sentiment/quality errors
     hyde_text = _generate_hyde_text(fuzzy_query)
     hyde_vector = embeddings.embed_query(hyde_text)
 
@@ -101,8 +102,13 @@ def search_listings(buyer_preferences, vectorstore, embeddings, k=3):
     reranked = sorted(zip(cross_scores, narrowed), key=lambda x: x[0], reverse=True)
 
     return [doc for score, doc in reranked[:k]]
-def analyze_listings(buyer_preferences, vectorstore, embeddings):
+def analyze_listings(buyer_preferences, vectorstore, embeddings, k=3, rejected_listing_ids=None):
+    if rejected_listing_ids is None:
+        rejected_listing_ids = []
+
     all_docs = list(vectorstore.docstore._dict.values())
+    all_docs = [doc for doc in all_docs if doc.metadata.get("listing_id") not in rejected_listing_ids]
+
     max_budget = buyer_preferences["max_budget"]
     min_bedrooms = buyer_preferences["min_bedrooms"]
     must_haves = buyer_preferences.get("must_haves", [])
@@ -146,37 +152,35 @@ def analyze_listings(buyer_preferences, vectorstore, embeddings):
 
     if fuzzy_must_haves and candidates_passed:
         fuzzy_query = " ".join(fuzzy_must_haves)
+        active_results = [r for r in results if r["tier"] != "hard_filter_rejected"]
 
         if hard_filter_applied:
-            # SIMPLE PATH - matches search_listings' simple branch
             query_vector = embeddings.embed_query(fuzzy_query)
-            for r in results:
-                if r["tier"] != "hard_filter_rejected":
-                    doc_vector = embeddings.embed_documents([r["doc"].page_content])[0]
-                    r["score"] = _cosine_similarity(query_vector, doc_vector)
-                    r["reason"] = f"cosine similarity to '{fuzzy_query}': {r['score']:.4f}"
+            for r in active_results:
+                doc_vector = embeddings.embed_documents([r["doc"].page_content])[0]
+                r["score"] = _cosine_similarity(query_vector, doc_vector)
+                r["reason"] = f"cosine similarity to '{fuzzy_query}': {r['score']:.4f}"
         else:
-            # FULL PATH - matches search_listings' HyDE + cross-encoder branch
             hyde_text = _generate_hyde_text(fuzzy_query)
-            pairs = [[hyde_text, r["doc"].page_content] for r in results if r["tier"] != "hard_filter_rejected"]
-            cross_scores = _cross_encoder.predict(pairs) if pairs else []
+            pairs = [[hyde_text, r["doc"].page_content] for r in active_results]
+            cross_scores = _cross_encoder.predict(pairs)
+            for r, score in zip(active_results, cross_scores):
+                r["score"] = float(score)
+                r["reason"] = f"cross-encoder score (HyDE query: '{hyde_text[:60]}...'): {r['score']:.4f}"
 
-            score_idx = 0
-            for r in results:
-                if r["tier"] != "hard_filter_rejected":
-                    r["score"] = float(cross_scores[score_idx])
-                    r["reason"] = f"cross-encoder score (HyDE query: '{hyde_text[:60]}...'): {r['score']:.4f}"
-                    score_idx += 1
-
-    selected_results = search_listings(buyer_preferences, vectorstore, embeddings, k=3)
-    selected_ids = [d.metadata.get("listing_id") for d in selected_results]
-
-    for r in results:
-        if r["listing_id"] in selected_ids:
+        # Determine "matched" (top-k) directly from these scores — no second LLM/search call
+        active_results.sort(key=lambda r: r["score"], reverse=True)
+        for r in active_results[:k]:
             r["tier"] = "matched"
-            if r["score"] is not None:
-                r["reason"] = f"selected — {r['reason'].split(': ', 1)[0]}: {r['score']:.4f}"
-            else:
-                r["reason"] = "selected in final shortlist"
+            r["reason"] = f"selected — {r['reason'].split('(', 1)[0].strip()}: {r['score']:.4f}"
+    elif candidates_passed:
+        # No fuzzy criteria at all - first k that passed hard filters are "matched"
+        for r in results:
+            if r["tier"] == "passed_but_not_selected":
+                r["tier"] = "matched"
+                r["reason"] = "selected (no fuzzy criteria to rank by)"
+                k -= 1
+                if k <= 0:
+                    break
 
     return results

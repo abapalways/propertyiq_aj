@@ -17,10 +17,35 @@ with open("../data/buyer_profiles.json") as f:
 
 buyer_names = [buyer.get("name") for buyer in buyer_profiles]
 
+_analysis_cache = {}
+
+
+def get_analysis(buyer_name):
+    if buyer_name not in _analysis_cache:
+        buyer = [b for b in buyer_profiles if b.get("name") == buyer_name][0]
+        rejected_ids = [r["listing_id"] for r in buyer["session_history"]["rejected_listings"]]
+        _analysis_cache[buyer_name] = analyze_listings(
+            buyer["preferences"], vectorstore, embeddings, rejected_listing_ids=rejected_ids
+        )
+    return _analysis_cache[buyer_name]
+
+
+def get_shortlist(buyer_name):
+    results = get_analysis(buyer_name)
+    matched = [r for r in results if r["tier"] == "matched"]
+
+    if not matched:
+        return "No listings matched this buyer's criteria."
+
+    output = f"Shortlist for {buyer_name}:\n\n"
+    for r in matched:
+        doc = r["doc"]
+        output += f"- {doc.metadata.get('listing_id')} — ${doc.metadata.get('price'):,} — {doc.metadata.get('bedrooms')} bed\n"
+    return output
+
 
 def render_analysis_html(buyer_name):
-    buyer = [b for b in buyer_profiles if b.get("name") == buyer_name][0]
-    results = analyze_listings(buyer["preferences"], vectorstore, embeddings)
+    results = get_analysis(buyer_name)
 
     tier_order = {"matched": 0, "passed_but_not_selected": 1, "hard_filter_rejected": 2}
     tier_colors = {
@@ -52,19 +77,6 @@ def render_analysis_html(buyer_name):
         </div>
         """
     return html
-
-
-def get_shortlist(buyer_name):
-    buyer = [b for b in buyer_profiles if b.get("name") == buyer_name][0]
-    results = search_listings(buyer["preferences"], vectorstore, embeddings, k=3)
-
-    if not results:
-        return "No listings matched this buyer's criteria."
-
-    output = f"Shortlist for {buyer_name}:\n\n"
-    for doc in results:
-        output += f"- {doc.metadata.get('listing_id')} — ${doc.metadata.get('price'):,} — {doc.metadata.get('bedrooms')} bed\n"
-    return output
 
 
 with gr.Blocks(title="PropertyIQ — Prototype Shortlist Generator") as demo:
