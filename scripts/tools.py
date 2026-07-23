@@ -111,3 +111,50 @@ if __name__ == "__main__":
 
     pine_101_metadata = {"city": "Austin", "bedrooms": 3, "square_footage": 1850}
     print(get_comps("L_PINE_101", pine_101_metadata))
+def reject_listing(buyer_id: str, listing_id: str, reason: str) -> dict:
+    """Record that a buyer has rejected a specific listing, so it will not 
+    be suggested to them again in future searches. Persists to buyer_profiles.json.
+
+    Args:
+        buyer_id: The buyer's ID, e.g. "B001".
+        listing_id: The listing's ID being rejected, e.g. "L_ELM_124".
+        reason: A short explanation of why the buyer rejected it.
+
+    Returns:
+        A dict confirming the rejection was recorded, or an error message.
+    """
+    import json
+    import os
+    from datetime import datetime, timezone
+
+    profiles_path = os.path.join(os.path.dirname(__file__), "..", "data", "buyer_profiles.json")
+
+    with open(profiles_path) as f:
+        buyer_profiles = json.load(f)
+
+    buyer = next((b for b in buyer_profiles if b["buyer_id"] == buyer_id), None)
+    if buyer is None:
+        return {"success": False, "message": f"No buyer found with id {buyer_id}"}
+
+    already_rejected = any(
+        r["listing_id"] == listing_id
+        for r in buyer["session_history"]["rejected_listings"]
+    )
+    if already_rejected:
+        return {"success": True, "message": f"{listing_id} was already rejected for {buyer_id}"}
+
+    buyer["session_history"]["rejected_listings"].append({
+        "listing_id": listing_id,
+        "reason": reason,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
+
+    with open(profiles_path, "w") as f:
+        json.dump(buyer_profiles, f, indent=2)
+
+    return {"success": True, "message": f"Recorded rejection of {listing_id} for {buyer_id}"}
+if __name__ == "__main__":
+    # ... existing tests ...
+
+    reject_result = reject_listing("B002", "L_WALNUT_107", "Test rejection - no private yard")
+    print(f"\nReject test: {reject_result}")
