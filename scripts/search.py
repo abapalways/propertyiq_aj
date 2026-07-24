@@ -45,6 +45,7 @@ def _generate_hyde_text(query):
 this buyer request: "{query}". Write it in natural real-estate listing style. 
 No headers, no bullet points, no explanations."""
     return _llm.invoke(prompt).content
+
 def search_listings(buyer_preferences, vectorstore, embeddings, k=3, rejected_listing_ids=None):
     if rejected_listing_ids is None:
         rejected_listing_ids = []
@@ -54,6 +55,7 @@ def search_listings(buyer_preferences, vectorstore, embeddings, k=3, rejected_li
 
     max_budget = buyer_preferences["max_budget"]
     min_bedrooms = buyer_preferences["min_bedrooms"]
+    preferred_city = buyer_preferences.get("preferred_city")
     must_haves = buyer_preferences.get("must_haves", [])
 
     candidates = [
@@ -61,6 +63,9 @@ def search_listings(buyer_preferences, vectorstore, embeddings, k=3, rejected_li
         if doc.metadata.get("price") <= max_budget
         and doc.metadata.get("bedrooms") >= min_bedrooms
     ]
+
+    if preferred_city:
+        candidates = [doc for doc in candidates if doc.metadata.get("city") == preferred_city]
 
     hard_filter_applied = False
     fuzzy_must_haves = []
@@ -112,7 +117,7 @@ def analyze_listings(buyer_preferences, vectorstore, embeddings, k=3, rejected_l
     max_budget = buyer_preferences["max_budget"]
     min_bedrooms = buyer_preferences["min_bedrooms"]
     must_haves = buyer_preferences.get("must_haves", [])
-
+    preferred_city = buyer_preferences.get("preferred_city")
     results = []
     hard_filter_applied = False
     candidates_passed = []
@@ -127,7 +132,9 @@ def analyze_listings(buyer_preferences, vectorstore, embeddings, k=3, rejected_l
             reasons_failed.append(f"over budget (${price:,} > ${max_budget:,})")
         if bedrooms < min_bedrooms:
             reasons_failed.append(f"too few bedrooms ({bedrooms} < {min_bedrooms})")
-
+        if preferred_city and doc.metadata.get("city") != preferred_city:
+            reasons_failed.append(f"wrong city ({doc.metadata.get('city')} != {preferred_city})")
+            
         for mh in must_haves:
             match = _matches_checkable(mh)
             if match:

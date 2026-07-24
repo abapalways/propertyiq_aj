@@ -53,3 +53,5 @@ print("Final ranking (Gemini + HyDE + cross-encoder), Henderson scenario:\n")
 for rank, (score, doc) in enumerate(final[:5], 1):
     listing_id = doc.metadata.get("listing_id")
     print(f"#{rank} {listing_id} — cross_score={score:.4f}")
+
+    
