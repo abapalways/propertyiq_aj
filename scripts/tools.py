@@ -105,12 +105,7 @@ def get_comps(listing_id: str, target_listing_metadata: dict) -> dict:
         "average_comp_price": round(average_comp_price, 2),
     }
 
-if __name__ == "__main__":
-    result = calc_mortgage(price=425000, down_payment_pct=0.20, interest_rate=0.065)
-    print(result)
 
-    pine_101_metadata = {"city": "Austin", "bedrooms": 3, "square_footage": 1850}
-    print(get_comps("L_PINE_101", pine_101_metadata))
 def reject_listing(buyer_id: str, listing_id: str, reason: str) -> dict:
     """Record that a buyer has rejected a specific listing, so it will not 
     be suggested to them again in future searches. Persists to buyer_profiles.json.
@@ -153,8 +148,90 @@ def reject_listing(buyer_id: str, listing_id: str, reason: str) -> dict:
         json.dump(buyer_profiles, f, indent=2)
 
     return {"success": True, "message": f"Recorded rejection of {listing_id} for {buyer_id}"}
-if __name__ == "__main__":
-    # ... existing tests ...
 
-    reject_result = reject_listing("B002", "L_WALNUT_107", "Test rejection - no private yard")
-    print(f"\nReject test: {reject_result}")
+
+def reset_rejected_listings(buyer_id: str) -> dict:
+    """Clear a buyer's entire rejection history, so previously rejected 
+    listings can be suggested again. Use only when the buyer explicitly 
+    asks to start over or reconsider past rejections.
+
+    Args:
+        buyer_id: The buyer's ID, e.g. "B001".
+
+    Returns:
+        A dict confirming the reset, or an error message.
+    """
+    import json
+    import os
+
+    profiles_path = os.path.join(os.path.dirname(__file__), "..", "data", "buyer_profiles.json")
+
+    with open(profiles_path) as f:
+        buyer_profiles = json.load(f)
+
+    buyer = next((b for b in buyer_profiles if b["buyer_id"] == buyer_id), None)
+    if buyer is None:
+        return {"success": False, "message": f"No buyer found with id {buyer_id}"}
+
+    count = len(buyer["session_history"]["rejected_listings"])
+    buyer["session_history"]["rejected_listings"] = []
+
+    with open(profiles_path, "w") as f:
+        json.dump(buyer_profiles, f, indent=2)
+
+    return {"success": True, "message": f"Cleared {count} rejected listing(s) for {buyer_id}"}
+
+
+def undo_last_rejection(buyer_id: str) -> dict:
+    """Remove only the most recently rejected listing, so it can be 
+    suggested again. Use when the buyer says something like 'actually, 
+    show me that last one again' or 'I changed my mind.'
+
+    Args:
+        buyer_id: The buyer's ID, e.g. "B001".
+
+    Returns:
+        A dict confirming which listing was restored, or an error message.
+    """
+    import json
+    import os
+
+    profiles_path = os.path.join(os.path.dirname(__file__), "..", "data", "buyer_profiles.json")
+
+    with open(profiles_path) as f:
+        buyer_profiles = json.load(f)
+
+    buyer = next((b for b in buyer_profiles if b["buyer_id"] == buyer_id), None)
+    if buyer is None:
+        return {"success": False, "message": f"No buyer found with id {buyer_id}"}
+
+    rejected = buyer["session_history"]["rejected_listings"]
+    if not rejected:
+        return {"success": True, "message": f"{buyer_id} has no rejections to undo"}
+
+    removed = rejected.pop()  # remove the most recently appended entry
+
+    with open(profiles_path, "w") as f:
+        json.dump(buyer_profiles, f, indent=2)
+
+    return {"success": True, "message": f"Restored {removed['listing_id']} (removed from rejection list)"}
+
+if __name__ == "__main__":
+    result = calc_mortgage(price=425000, down_payment_pct=0.20, interest_rate=0.065)
+    print(result)
+
+    import json
+    with open("../data/sold_comps.json") as f:
+        sold_comps = json.load(f)
+    pine_101_metadata = {"city": "Austin", "bedrooms": 3, "square_footage": 1850}
+    print(get_comps("L_PINE_101", pine_101_metadata))
+
+    print("\n--- Adding test rejections for B001 ---")
+    print(reject_listing("B001", "L_PINE_101", "Test rejection 1 - too far from downtown"))
+    print(reject_listing("B001", "L_SPRUCE_106", "Test rejection 2 - needs too much work"))
+
+    print("\n--- Testing undo_last_rejection ---")
+    print(undo_last_rejection("B001"))
+
+    print("\n--- Testing reset_rejected_listings ---")
+    print(reset_rejected_listings("B001"))
