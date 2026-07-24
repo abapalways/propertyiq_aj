@@ -4,7 +4,7 @@
     "name": "The Torres Family",
     "preferences": {
       "min_bedrooms": 3,
-      "max_budget": 450000,
+      "max_budget": 500000,
       "must_haves": [
         "good school district",
         "garage"
@@ -13,7 +13,19 @@
     },
     "session_history": {
       "current_session_id": "sess_002",
-      "rejected_listings": []
+      "rejected_listings": [
+        {
+          "listing_id": "L_ELM_124",
+          "address": "124 Elm Street",
+          "reason": "Yard is too small",
+          "timestamp": "2026-07-11T14:30:00Z"
+        },
+        {
+          "listing_id": "L_SPRUCE_106",
+          "reason": "needs too much work",
+          "timestamp": "2026-07-24T04:37:40.742614+00:00"
+        }
+      ]
     },
     "test_purpose": "Week 1 Core Target & Week 2 Memory Recall. Out of the corpus, L_PINE_101 is their perfect remaining match. L_ELM_124 meets physical constraints but must be filtered out due to session history rejection. L_CEDAR_103 fails budget, L_BIRCH_110 fails garage, and L_OAK_104 fails bedrooms."
   },
