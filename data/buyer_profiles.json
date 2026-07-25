@@ -3,7 +3,7 @@
     "buyer_id": "B001",
     "name": "The Torres Family",
     "preferences": {
-      "min_bedrooms": 3,
+      "min_bedrooms": 5,
       "max_budget": 500000,
       "must_haves": [
         "good school district",
