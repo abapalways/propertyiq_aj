@@ -1,6 +1,6 @@
 import os
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
-
+from memory import extract_semantic_memory
 import json
 import gradio as gr
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
@@ -95,6 +95,15 @@ def respond(user_message, display_history, messages_state):
     display_history.append({"role": "assistant", "content": response.content})
     return "", display_history, messages_state, build_trace_html(messages_state)
 
+def end_session(buyer_name, messages_state):
+    buyer = get_buyer(buyer_name)
+    if buyer is None:
+        return "Guest sessions have nothing to save."
+    result = extract_semantic_memory(buyer["buyer_id"], messages_state)
+    if result["applied"]:
+        return "Saved: " + "; ".join(result["applied"])
+    return "Nothing new to save from this session."
+
 
 _analysis_cache = {}
 
@@ -177,11 +186,19 @@ with gr.Blocks(title="PropertyIQ — Chat Agent") as demo:
 
             msg_box.submit(fn=respond, inputs=[msg_box, chatbot, messages_state], outputs=[msg_box, chatbot, messages_state, trace_output])
 
+            with gr.Row():
+                end_session_btn = gr.Button("💾 End Session (Save Memory)")
+                end_session_output = gr.Textbox(label="Memory extraction result", interactive=False)
+
+            end_session_btn.click(fn=end_session, inputs=[buyer_dropdown, messages_state], outputs=end_session_output)
+
         with gr.Tab("Debug: Full Analysis (temporary)"):
             debug_dropdown = gr.Dropdown(choices=buyer_names, label="Select Buyer Profile")
             debug_output = gr.HTML()
             debug_dropdown.change(fn=render_analysis_html, inputs=debug_dropdown, outputs=debug_output)
             demo.load(fn=render_analysis_html, inputs=debug_dropdown, outputs=debug_output)
+
+
 
 
 if __name__ == "__main__":

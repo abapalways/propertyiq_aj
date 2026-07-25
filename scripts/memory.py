@@ -4,13 +4,97 @@ preferences) and episodic memory (specific rejection events). Each
 function here is a durable, disk-persisted write — these are the 
 tools that give the agent actual memory across sessions.
 """
-
-import json
+from dotenv import load_dotenv
 import os
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
+import json
 from datetime import datetime, timezone
 
 _PROFILES_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "buyer_profiles.json")
 
+
+from langchain_groq import ChatGroq
+
+_extraction_llm = ChatGroq(model="llama-3.3-70b-versatile")
+
+
+def _build_transcript(messages_state):
+    """Render the conversation into plain text for the extraction prompt."""
+    lines = []
+    for msg in messages_state:
+        msg_type = type(msg).__name__
+        if msg_type == "HumanMessage":
+            lines.append(f"Buyer: {msg.content}")
+        elif msg_type == "AIMessage" and msg.content:
+            lines.append(f"Assistant: {msg.content}")
+    return "\n".join(lines)
+
+
+def extract_semantic_memory(buyer_id: str, messages_state: list) -> dict:
+    """Review a full conversation and extract standing buyer preferences 
+    to persist as semantic memory. A dedicated extraction pass, separate 
+    from the conversational agent - runs once per session (e.g. on buyer 
+    switch), not live per-message.
+
+    Returns a dict of what was extracted and applied.
+    """
+    import json as json_lib
+
+    transcript = _build_transcript(messages_state)
+    if not transcript.strip():
+        return {"extracted": {}, "applied": []}
+
+    prompt = f"""Review this real estate buyer conversation transcript and extract 
+    any STANDING preferences the buyer stated - things that should apply to every 
+    future search, not one-off comments.
+
+    IMPORTANT: If the buyer stated conflicting or changing values for the same 
+    preference at different points in the conversation (e.g. said "3 bedrooms" 
+    early on, then later said "actually, make it 5 bedrooms"), always use the 
+    MOST RECENT value they stated - that reflects their current, final intent, 
+    not their earlier one.
+
+    Respond ONLY with valid JSON in this exact shape (omit fields with no evidence):
+    {{
+    "min_bedrooms": <int or omit>,
+    "max_budget": <number or omit>,
+    "must_haves": [<list of strings> or omit],
+    "preferred_city": <string or omit>,
+    "notes": [<list of free-text preferences that don't fit the above> or omit]
+    }}
+
+    Transcript:
+    {transcript}
+
+    JSON:"""
+
+    response = _extraction_llm.invoke(prompt)
+    raw = response.content.strip()
+
+    # Strip markdown code fences if the model added them
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+        raw = raw.strip()
+
+    try:
+        extracted = json_lib.loads(raw)
+    except json_lib.JSONDecodeError:
+        return {"extracted": {}, "applied": [], "error": f"Could not parse extraction output: {raw[:200]}"}
+
+    applied = []
+    for field in ["min_bedrooms", "max_budget", "must_haves", "preferred_city"]:
+        if field in extracted:
+            result = update_preference(buyer_id, field, extracted[field])
+            applied.append(result["message"])
+
+    if "notes" in extracted:
+        for note in extracted["notes"]:
+            result = add_preference_note(buyer_id, note)
+            applied.append(result["message"])
+
+    return {"extracted": extracted, "applied": applied}
 
 def _load_profiles():
     with open(_PROFILES_PATH) as f:

@@ -3,6 +3,8 @@ os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 import re
 from dotenv import load_dotenv
 load_dotenv("../.env")
+from langchain_groq import ChatGroq
+
 
 
 import json
@@ -14,7 +16,7 @@ from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, System
 from search import search_listings
 
 from tools import calc_mortgage, get_comps
-from memory import reject_listing, undo_last_rejection, reset_rejected_listings, update_preference
+from memory import reject_listing, undo_last_rejection, reset_rejected_listings
 
 
 embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001")
@@ -58,11 +60,11 @@ def _search_listings_tool(min_bedrooms: int, max_budget: float, must_haves: list
         })
     return output
 
-llm = ChatOllama(model="qwen3:8b")
+llm = ChatGroq(model="llama-3.3-70b-versatile")
 
 llm_with_tools = llm.bind_tools([
     calc_mortgage, get_comps,
-    reject_listing, undo_last_rejection, reset_rejected_listings, update_preference,
+    reject_listing, undo_last_rejection, reset_rejected_listings,
     _search_listings_tool,
 ])
 
@@ -72,26 +74,16 @@ TOOL_MAP = {
     "reject_listing": reject_listing,
     "undo_last_rejection": undo_last_rejection,
     "reset_rejected_listings": reset_rejected_listings,
-    "update_preference": update_preference,
     "_search_listings_tool": _search_listings_tool,
 }
 
 def build_system_prompt(buyer):
-
     if buyer is None:
         return """You are a helpful real estate assistant. The user is browsing as a guest — 
-                there is no saved profile and nothing is remembered between sessions. Do not ask about 
-                previously rejected listings, since none are tracked for guests. If the guest wants to 
-                exclude a specific listing from just this search, you may do so for this one search only, 
-                but make clear it will not be remembered next time.If the buyer says they don't want a specific listing, call reject_listing with their buyer_id, 
-                the listing_id, and a brief reason based on what they said.
-                If the buyer wants to reconsider their most recent rejection (e.g. "actually show me that last 
-                one again" or "I changed my mind"), call undo_last_rejection with their buyer_id.
-                If the buyer wants to clear their entire rejection history and start over, call 
-                reset_rejected_listings with their buyer_id.If the buyer states a new or changed preference (e.g. "actually I need 4 bedrooms" or 
-                "my budget is now $500,000"), call update_preference with their buyer_id, the field name, 
-                and the new value."""
-    # ... rest unchanged
+there is no saved profile and nothing is remembered between sessions. Do not ask about 
+previously rejected listings, since none are tracked for guests. If the guest wants to 
+exclude a specific listing from just this search, you may do so for this one search only, 
+but make clear it will not be remembered next time."""
 
     prefs = buyer.get("preferences", {})
     rejected = buyer.get("session_history", {}).get("rejected_listings", [])
@@ -106,6 +98,8 @@ def build_system_prompt(buyer):
         known_prefs.append(f"must_haves={prefs['must_haves']}")
     if "preferred_city" in prefs:
         known_prefs.append(f"preferred_city={prefs['preferred_city']}")
+    if "notes" in prefs and prefs["notes"]:
+        known_prefs.append(f"other preferences={prefs['notes']}")
 
     prefs_line = (
         f"Their known preferences: {', '.join(known_prefs)}."
@@ -120,12 +114,17 @@ def build_system_prompt(buyer):
     )
 
     return f"""You are a helpful real estate assistant for {buyer['name']} (buyer_id: {buyer['buyer_id']}).
-    {prefs_line}
-    {rejected_line}
+{prefs_line}
+{rejected_line}
 When searching, always pass rejected_listing_ids={rejected_ids} to search_listings.
 If the buyer says they don't want a specific listing, call reject_listing with their buyer_id, 
-the listing_id, and a brief reason based on what they said."""
-
+the listing_id, and a brief reason based on what they said.
+If the buyer wants to reconsider their most recent rejection (e.g. "actually show me that last 
+one again" or "I changed my mind"), call undo_last_rejection with their buyer_id.
+If the buyer wants to clear their entire rejection history and start over, call 
+reset_rejected_listings with their buyer_id.
+If the buyer states preferences during conversation, simply acknowledge them naturally - 
+these will be saved automatically when the session ends."""
 
 def run_conversation(buyer_name):
     buyer = next((b for b in buyer_profiles if b["name"] == buyer_name), None) if buyer_name != "Guest" else None
