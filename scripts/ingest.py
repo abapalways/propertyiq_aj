@@ -31,6 +31,33 @@ with open("../data/listings_corpus.md") as f:
 splitter = CharacterTextSplitter(separator="---", chunk_size=1000, chunk_overlap=0)
 raw_chunks = splitter.split_text(text)
 
+import re
+from langchain_groq import ChatGroq
+
+_enrichment_llm = ChatGroq(model="openai/gpt-oss-120b")
+
+
+def extract_school_text(chunk):
+    """Pull out just the sentence(s) mentioning school district/rating."""
+    match = re.search(r"^.*[Ss]chool.*$", chunk, re.MULTILINE)
+    return match.group(0).strip() if match else None
+
+
+def enrich_with_sentiment(school_text):
+    """One-time LLM call: read school-related text, produce a short, 
+    sentiment-clear phrase to append before embedding."""
+    if not school_text:
+        return ""
+    prompt = f"""Read this real estate listing's school district description and 
+summarize its quality in ONE short sentence using clear positive or negative 
+language (e.g. "excellent, top-rated" or "poor, underperforming"). 
+Be direct and unambiguous about whether it's good or bad.
+
+Text: {school_text}
+
+One-sentence summary:"""
+    return _enrichment_llm.invoke(prompt).content.strip()
+
 def extract_garage_spaces(chunk):
     if re.search(r"(does not have|no|without)\s+(a\s+)?garage", chunk, re.IGNORECASE):
         return 0
@@ -75,7 +102,14 @@ for chunk in raw_chunks:
         "has_hoa": extract_has_hoa(chunk),
         "has_private_yard": extract_has_private_yard(chunk),
     }
-    documents.append(Document(page_content=chunk.strip(), metadata=metadata))
+    school_text = extract_school_text(chunk)
+    sentiment_addition = enrich_with_sentiment(school_text)
+
+    enriched_content = chunk.strip()
+    if sentiment_addition:
+        enriched_content += " " + sentiment_addition
+
+    documents.append(Document(page_content=enriched_content, metadata=metadata))
 
 print(f"Built {len(documents)} documents\n")
 for doc in documents:

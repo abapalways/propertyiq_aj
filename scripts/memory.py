@@ -15,9 +15,7 @@ _PROFILES_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "buyer_pr
 
 from langchain_groq import ChatGroq
 
-_extraction_llm = ChatGroq(model="llama-3.3-70b-versatile")
-
-
+_extraction_llm = ChatGroq(model="openai/gpt-oss-120b")
 def _build_transcript(messages_state):
     """Render the conversation into plain text for the extraction prompt."""
     lines = []

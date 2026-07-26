@@ -44,15 +44,15 @@ def _run_turn(messages_state):
 
     return response, messages_state
 
+from search import _cosine_similarity
 
 def build_trace_html(messages_state):
-    """Extract a readable trace of tool calls and their results from the
-    full message history, for the agent-trace debug panel."""
     if not messages_state:
         return "<p>No activity yet.</p>"
 
     html = "<h4 style='color: #1a1a1a;'>Agent Trace</h4>"
     tool_call_names = {}
+    tool_call_args = {}
 
     for msg in messages_state:
         msg_type = type(msg).__name__
@@ -60,6 +60,7 @@ def build_trace_html(messages_state):
         if msg_type == "AIMessage" and getattr(msg, "tool_calls", None):
             for tc in msg.tool_calls:
                 tool_call_names[tc["id"]] = tc["name"]
+                tool_call_args[tc["id"]] = tc["args"]
                 args_str = ", ".join(f"{k}={v}" for k, v in tc["args"].items())
                 html += f"""
                 <div style="background-color: #e7f0ff; color: #1a1a1a; padding: 8px; margin: 4px 0; border-radius: 4px; border-left: 4px solid #4285f4;">
@@ -75,6 +76,29 @@ def build_trace_html(messages_state):
                 📤 <strong>Result from {tool_name}:</strong> {content_preview}...
             </div>
             """
+
+            # If this was a search, show similarity scores too
+            if tool_name == "_search_listings_tool":
+                args = tool_call_args.get(msg.tool_call_id, {})
+                must_haves = args.get("must_haves") or []
+                fuzzy_terms = [mh for mh in must_haves if "garage" not in mh.lower() and "yard" not in mh.lower()]
+                if fuzzy_terms:
+                    fuzzy_query = " ".join(fuzzy_terms)
+                    try:
+                        results = json.loads(msg.content)
+                        query_vec = embeddings.embed_query(fuzzy_query)
+                        html += f"""<div style="margin: 4px 0 12px 20px; font-size: 0.9em; color: #555;">
+                        <em>Similarity scores for '{fuzzy_query}':</em><ul>"""
+                        for r in results:
+                            listing_id = r.get("listing_id")
+                            doc_text = r.get("description", "")
+                            if doc_text:
+                                doc_vec = embeddings.embed_documents([doc_text])[0]
+                                sim = _cosine_similarity(query_vec, doc_vec)
+                                html += f"<li>{listing_id}: {sim:.4f}</li>"
+                        html += "</ul></div>"
+                    except Exception as e:
+                        html += f"<div style='margin-left:20px; color:#888;'>(could not compute similarity: {e})</div>"
 
     return html
 
@@ -192,12 +216,10 @@ with gr.Blocks(title="PropertyIQ — Chat Agent") as demo:
 
             end_session_btn.click(fn=end_session, inputs=[buyer_dropdown, messages_state], outputs=end_session_output)
 
-        with gr.Tab("Debug: Full Analysis (temporary)"):
-            debug_dropdown = gr.Dropdown(choices=buyer_names, label="Select Buyer Profile")
-            debug_output = gr.HTML()
-            debug_dropdown.change(fn=render_analysis_html, inputs=debug_dropdown, outputs=debug_output)
-            demo.load(fn=render_analysis_html, inputs=debug_dropdown, outputs=debug_output)
-
+            with gr.Tab("Debug: Full Analysis (temporary)"):
+                debug_output = gr.HTML()
+                debug_refresh_btn = gr.Button("🔄 Refresh Analysis for Current Chat Buyer")
+                debug_refresh_btn.click(fn=render_analysis_html, inputs=buyer_dropdown, outputs=debug_output)
 
 
 

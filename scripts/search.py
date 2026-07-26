@@ -91,6 +91,7 @@ def search_listings(buyer_preferences, vectorstore, embeddings, k=3, rejected_li
         results = filtered_vectorstore.similarity_search(fuzzy_query, k=k)
         return results
 
+    # ... HyDE + cross-encoder path ...
     hyde_text = _generate_hyde_text(fuzzy_query)
     hyde_vector = embeddings.embed_query(hyde_text)
 
@@ -105,8 +106,8 @@ def search_listings(buyer_preferences, vectorstore, embeddings, k=3, rejected_li
     pairs = [[hyde_text, doc.page_content] for doc in narrowed]
     cross_scores = _cross_encoder.predict(pairs)
     reranked = sorted(zip(cross_scores, narrowed), key=lambda x: x[0], reverse=True)
-
     return [doc for score, doc in reranked[:k]]
+
 def analyze_listings(buyer_preferences, vectorstore, embeddings, k=3, rejected_listing_ids=None):
     if rejected_listing_ids is None:
         rejected_listing_ids = []
@@ -191,3 +192,33 @@ def analyze_listings(buyer_preferences, vectorstore, embeddings, k=3, rejected_l
                     break
 
     return results
+
+def _judge_listing_relevance(fuzzy_query, description_text):
+    """Ask the LLM a direct yes/no: does this listing's real text genuinely 
+    satisfy the fuzzy criterion? Grounded, per-listing judgment - replaces 
+    trusting a similarity score alone."""
+    prompt = f"""Given this real estate listing description, does it genuinely 
+satisfy the buyer's requirement: "{fuzzy_query}"?
+
+Answer with exactly one word on the first line: YES or NO.
+If the description does not mention this topic at all, or contradicts it, answer NO.
+
+Listing description:
+{description_text}
+
+Answer:"""
+    response = _llm.invoke(prompt).content.strip()
+    first_line = response.split("\n")[0].upper()
+    return "YES" in first_line
+
+
+def _apply_llm_judgment(ranked_docs, fuzzy_query, k):
+    """Filter a ranked list down to only those an LLM confirms genuinely 
+    satisfy the fuzzy_query, stopping once k confirmed matches are found."""
+    confirmed = []
+    for doc in ranked_docs:
+        if len(confirmed) >= k:
+            break
+        if _judge_listing_relevance(fuzzy_query, doc.page_content):
+            confirmed.append(doc)
+    return confirmed

@@ -28,7 +28,9 @@ with open("../data/buyer_profiles.json") as f:
 
 
 
-def _search_listings_tool(min_bedrooms: int, max_budget: float, must_haves: list = None, preferred_city: str = None, k: int = 3, rejected_listing_ids: list = None) -> list:
+from typing import Optional
+
+def _search_listings_tool(min_bedrooms: int, max_budget: float, must_haves: Optional[list] = None, preferred_city: Optional[str] = None, k: int = 3, rejected_listing_ids: Optional[list] = None) -> list:
     """Search for property listings matching a buyer's criteria.
 
     Args:
@@ -46,21 +48,23 @@ def _search_listings_tool(min_bedrooms: int, max_budget: float, must_haves: list
     results = search_listings(buyer_preferences, vectorstore, embeddings, k=k, rejected_listing_ids=rejected_listing_ids or [])
 
     output = []
-    for doc in results:
+    for i, doc in enumerate(results, 1):
         address_match = re.search(r"\*\*Address:\*\*\s*(.+)", doc.page_content)
         address = address_match.group(1).strip() if address_match else None
 
         output.append({
+            "rank": i,
             "listing_id": doc.metadata.get("listing_id"),
             "price": doc.metadata.get("price"),
             "bedrooms": doc.metadata.get("bedrooms"),
             "garage_spaces": doc.metadata.get("garage_spaces"),
             "square_footage": doc.metadata.get("square_footage"),
             "address": address,
+            "description": doc.page_content[:400],
         })
     return output
 
-llm = ChatGroq(model="llama-3.3-70b-versatile")
+llm = ChatGroq(model="openai/gpt-oss-120b")
 
 llm_with_tools = llm.bind_tools([
     calc_mortgage, get_comps,
@@ -108,23 +112,42 @@ but make clear it will not be remembered next time."""
     )
 
     rejected_line = (
-        f"They have already rejected these listing IDs: {rejected_ids} — never suggest these again."
-        if rejected_ids
-        else "They have no rejected listings on file yet."
-    )
+            f"They have already rejected these listing IDs: {rejected_ids} — never suggest these again."
+            if rejected_ids
+            else "They have no rejected listings on file yet."
+        )
 
     return f"""You are a helpful real estate assistant for {buyer['name']} (buyer_id: {buyer['buyer_id']}).
-{prefs_line}
-{rejected_line}
-When searching, always pass rejected_listing_ids={rejected_ids} to search_listings.
-If the buyer says they don't want a specific listing, call reject_listing with their buyer_id, 
-the listing_id, and a brief reason based on what they said.
-If the buyer wants to reconsider their most recent rejection (e.g. "actually show me that last 
-one again" or "I changed my mind"), call undo_last_rejection with their buyer_id.
-If the buyer wants to clear their entire rejection history and start over, call 
-reset_rejected_listings with their buyer_id.
-If the buyer states preferences during conversation, simply acknowledge them naturally - 
-these will be saved automatically when the session ends."""
+    {prefs_line}
+    {rejected_line}
+    When searching, always pass rejected_listing_ids={rejected_ids} to search_listings.
+    If the buyer says they don't want a specific listing, call reject_listing with their buyer_id, 
+    the listing_id, and a brief reason based on what they said.
+    If the buyer wants to reconsider their most recent rejection (e.g. "actually show me that last 
+    one again" or "I changed my mind"), call undo_last_rejection with their buyer_id.
+    If the buyer wants to clear their entire rejection history and start over, call 
+    reset_rejected_listings with their buyer_id.
+    If the buyer states preferences during conversation, simply acknowledge them naturally - 
+    these will be saved automatically when the session ends.
+    If the buyer states specific criteria directly in their message (e.g. "3-bedroom home", 
+    "under $400,000"), use ONLY those specific fields as stated for that search. For any 
+    preference field the buyer does NOT explicitly mention in their current message (such as 
+    must_haves items like "good school district"), continue using their stored preferences - 
+    merge explicit statements with stored preferences, do not replace the whole preference set 
+    just because only some criteria were mentioned.
+    CRITICAL: When describing search results, you MUST only state facts that appear 
+    literally in the "description" field returned by the search tool. Do NOT infer, 
+    guess, or generate plausible-sounding details about schools, neighborhoods, or 
+    any other attribute. If the description does not explicitly mention something 
+    (e.g. a specific school name or rating), do not mention it at all - omit it 
+    rather than invent it. Quote or closely paraphrase only what is actually written 
+    in the description text.
+    When presenting search results, ALWAYS format them as a markdown table with exactly 
+    4 columns: "Rank", "Listing ID", "Price", and "Key Details". Rank reflects how well 
+    each listing matches the buyer's fuzzy/qualitative criteria, best match first - 
+    always preserve the order given by the search tool, do not reorder results yourself."""
+
+
 
 def run_conversation(buyer_name):
     buyer = next((b for b in buyer_profiles if b["name"] == buyer_name), None) if buyer_name != "Guest" else None
