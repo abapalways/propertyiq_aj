@@ -13,7 +13,7 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
 
-from search import search_listings
+from search import search_listings, analyze_listings
 
 from tools import calc_mortgage, get_comps
 from memory import reject_listing, undo_last_rejection, reset_rejected_listings
@@ -29,7 +29,7 @@ with open("../data/buyer_profiles.json") as f:
 
 
 from typing import Optional
-
+_last_full_analysis = None
 def _search_listings_tool(min_bedrooms: int, max_budget: float, must_haves: Optional[list] = None, preferred_city: Optional[str] = None, k: int = 3, rejected_listing_ids: Optional[list] = None) -> list:
     """Search for property listings matching a buyer's criteria.
 
@@ -41,27 +41,34 @@ def _search_listings_tool(min_bedrooms: int, max_budget: float, must_haves: Opti
         k: Number of results to return, defaults to 3.
         rejected_listing_ids: List of listing IDs to exclude, defaults to none.
     """
+    global _last_full_analysis
+
     buyer_preferences = {
-        "min_bedrooms": min_bedrooms, "max_budget": max_budget,
-        "must_haves": must_haves or [], "preferred_city": preferred_city,
-    }
-    results = search_listings(buyer_preferences, vectorstore, embeddings, k=k, rejected_listing_ids=rejected_listing_ids or [])
+            "min_bedrooms": min_bedrooms, "max_budget": max_budget,
+            "must_haves": must_haves or [], "preferred_city": preferred_city,
+        }
+
+        # Compute the FULL breakdown once - this IS the live query running
+    full_analysis = analyze_listings(buyer_preferences, vectorstore, embeddings, k=k, rejected_listing_ids=rejected_listing_ids or [])
+    _last_full_analysis = full_analysis  # stash it, no recomputation later
+
+    matched = [r for r in full_analysis if r["tier"] == "matched"]
 
     output = []
-    for i, doc in enumerate(results, 1):
-        address_match = re.search(r"\*\*Address:\*\*\s*(.+)", doc.page_content)
-        address = address_match.group(1).strip() if address_match else None
-
-        output.append({
-            "rank": i,
-            "listing_id": doc.metadata.get("listing_id"),
-            "price": doc.metadata.get("price"),
-            "bedrooms": doc.metadata.get("bedrooms"),
-            "garage_spaces": doc.metadata.get("garage_spaces"),
-            "square_footage": doc.metadata.get("square_footage"),
-            "address": address,
-            "description": doc.page_content[:400],
-        })
+    for i, r in enumerate(matched, 1):
+            doc = r["doc"]
+            address_match = re.search(r"\*\*Address:\*\*\s*(.+)", doc.page_content)
+            address = address_match.group(1).strip() if address_match else None
+            output.append({
+                "rank": i,
+                "listing_id": doc.metadata.get("listing_id"),
+                "price": doc.metadata.get("price"),
+                "bedrooms": doc.metadata.get("bedrooms"),
+                "garage_spaces": doc.metadata.get("garage_spaces"),
+                "square_footage": doc.metadata.get("square_footage"),
+                "address": address,
+                "description": doc.page_content[:400],
+            })
     return output
 
 llm = ChatGroq(model="openai/gpt-oss-120b")

@@ -4,6 +4,8 @@ from memory import extract_semantic_memory
 import json
 import gradio as gr
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
+import search
+import chat_agent  # needed to read the live-updated module variable, not a stale import snapshot
 
 from chat_agent import llm_with_tools, build_system_prompt, buyer_profiles, TOOL_MAP, vectorstore, embeddings
 from search import analyze_listings
@@ -79,27 +81,13 @@ def build_trace_html(messages_state):
 
             # If this was a search, show similarity scores too
             if tool_name == "_search_listings_tool":
-                args = tool_call_args.get(msg.tool_call_id, {})
-                must_haves = args.get("must_haves") or []
-                fuzzy_terms = [mh for mh in must_haves if "garage" not in mh.lower() and "yard" not in mh.lower()]
-                if fuzzy_terms:
-                    fuzzy_query = " ".join(fuzzy_terms)
-                    try:
-                        results = json.loads(msg.content)
-                        query_vec = embeddings.embed_query(fuzzy_query)
-                        html += f"""<div style="margin: 4px 0 12px 20px; font-size: 0.9em; color: #555;">
-                        <em>Similarity scores for '{fuzzy_query}':</em><ul>"""
-                        for r in results:
-                            listing_id = r.get("listing_id")
-                            doc_text = r.get("description", "")
-                            if doc_text:
-                                doc_vec = embeddings.embed_documents([doc_text])[0]
-                                sim = _cosine_similarity(query_vec, doc_vec)
-                                html += f"<li>{listing_id}: {sim:.4f}</li>"
-                        html += "</ul></div>"
-                    except Exception as e:
-                        html += f"<div style='margin-left:20px; color:#888;'>(could not compute similarity: {e})</div>"
-
+                if search._last_rrf_scores:
+                    html += """<div style="margin: 4px 0 12px 20px; font-size: 0.9em; color: #555;">
+                    <em>RRF scores (higher = better match, from the actual search):</em><ul>"""
+                    sorted_scores = sorted(search._last_rrf_scores.items(), key=lambda x: x[1], reverse=True)
+                    for listing_id, score in sorted_scores:
+                        html += f"<li>{listing_id}: {score:.5f}</li>"
+                    html += "</ul></div>"
     return html
 
 
@@ -110,9 +98,60 @@ def start_session(buyer_name):
     messages_state = [SystemMessage(system_prompt)]
     display_history = []
     return display_history, messages_state, build_trace_html(messages_state)
+from guardrails import Guard
+from guardrails.errors import ValidationError
+from guardrails_check import FairHousingCheck, OnTopicCheck
 
+_fair_housing_guard = Guard().use(FairHousingCheck())
+_on_topic_guard = Guard().use(OnTopicCheck())
+
+def _render_results_html(results, label):
+    tier_order = {"matched": 0, "passed_but_not_selected": 1, "hard_filter_rejected": 2}
+    tier_colors = {
+        "matched": "#d4edda",
+        "passed_but_not_selected": "#fff3cd",
+        "hard_filter_rejected": "#f8d7da",
+    }
+    tier_labels = {
+        "matched": "✅ MATCHED",
+        "passed_but_not_selected": "🟡 PASSED FILTERS, NOT SELECTED",
+        "hard_filter_rejected": "❌ REJECTED",
+    }
+
+    sorted_results = sorted(results, key=lambda x: tier_order[x["tier"]])
+    html = f"<h3 style='color: #1a1a1a;'>Analysis for {label}</h3>"
+    for r in sorted_results:
+        color = tier_colors[r["tier"]]
+        label_text = tier_labels[r["tier"]]
+        doc = r["doc"]
+        price = doc.metadata.get("price")
+        bedrooms = doc.metadata.get("bedrooms")
+        html += f"""
+        <div style="background-color: {color}; color: #1a1a1a; padding: 12px; margin: 8px 0; border-radius: 6px; border: 1px solid #ccc;">
+            <strong style="color: #1a1a1a;">{label_text} — {r['listing_id']}</strong><br>
+            <span style="color: #1a1a1a;">Price: ${price:,} | Bedrooms: {bedrooms}</span><br>
+            <span style="color: #1a1a1a;">Reason: {r['reason']}</span>
+        </div>
+        """
+    return html
+
+def render_current_query_analysis():
+    if chat_agent._last_full_analysis is None:
+        return "<p>No search has been run yet.</p>"
+    return _render_results_html(chat_agent._last_full_analysis, "most recent search")
 
 def respond(user_message, display_history, messages_state):
+    try:
+        _fair_housing_guard.validate(user_message)
+        _on_topic_guard.validate(user_message)
+    except ValidationError as e:
+            error_text = str(e)
+            if "errors:" in error_text:
+                error_text = error_text.split("errors:", 1)[1].strip()
+            display_history.append({"role": "user", "content": user_message})
+            display_history.append({"role": "assistant", "content": error_text})
+            return "", display_history, messages_state, build_trace_html(messages_state)
+
     messages_state.append(HumanMessage(user_message))
     response, messages_state = _run_turn(messages_state)
     display_history.append({"role": "user", "content": user_message})
@@ -219,7 +258,7 @@ with gr.Blocks(title="PropertyIQ — Chat Agent") as demo:
             with gr.Tab("Debug: Full Analysis (temporary)"):
                 debug_output = gr.HTML()
                 debug_refresh_btn = gr.Button("🔄 Refresh Analysis for Current Chat Buyer")
-                debug_refresh_btn.click(fn=render_analysis_html, inputs=buyer_dropdown, outputs=debug_output)
+                debug_refresh_btn.click(fn=render_current_query_analysis, inputs=[], outputs=debug_output)
 
 
 
