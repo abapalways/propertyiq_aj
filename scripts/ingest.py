@@ -9,6 +9,7 @@ import os
 print(f"cwd: {os.getcwd()}")
 print(f"TRACING_V2: {os.environ.get('LANGCHAIN_TRACING_V2')}")
 print(f"PROJECT: {os.environ.get('LANGCHAIN_PROJECT')}")
+from dimensions_config import FUZZY_DIMENSIONS
 
 # %%
 # --- Load the raw corpus text ---
@@ -36,27 +37,60 @@ from langchain_groq import ChatGroq
 
 _enrichment_llm = ChatGroq(model="openai/gpt-oss-120b")
 
+def extract_dimension_text(chunk, dimension_config):
+    matched_lines = []
+    seen = set()
+    for keyword in dimension_config["keywords"]:
+        matches = re.findall(rf"^.*{keyword}.*$", chunk, re.MULTILINE | re.IGNORECASE)
+        for line in matches:
+            line = line.strip()
+            if line not in seen:
+                seen.add(line)
+                matched_lines.append(line)
+    if not matched_lines:
+        return None
+    return "\n".join(matched_lines)
 
-def extract_school_text(chunk):
-    """Pull out just the sentence(s) mentioning school district/rating."""
-    match = re.search(r"^.*[Ss]chool.*$", chunk, re.MULTILINE)
-    return match.group(0).strip() if match else None
 
-
-def enrich_with_sentiment(school_text):
-    """One-time LLM call: read school-related text, produce a short, 
-    sentiment-clear phrase to append before embedding."""
-    if not school_text:
+def enrich_dimension(text, dimension_name):
+    if not text:
         return ""
-    prompt = f"""Read this real estate listing's school district description and 
-summarize its quality in ONE short sentence using clear positive or negative 
-language (e.g. "excellent, top-rated" or "poor, underperforming"). 
-Be direct and unambiguous about whether it's good or bad.
+    prompt = f"""State the quality of this {dimension_name.replace('_', ' ')} 
+in ONE short sentence using an EXPLICIT quality word (excellent, poor, 
+outdated, top-rated, move-in-ready, needs-work, etc.) - be direct.
 
-Text: {school_text}
+Text: {text}
 
-One-sentence summary:"""
+One-sentence quality statement:"""
     return _enrichment_llm.invoke(prompt).content.strip()
+def enrich_listing_sentiment(full_listing_text):
+    """Read the entire listing and add explicit, unambiguous sentiment 
+    clarifications for any subjective/qualitative claims (school quality, 
+    condition, neighborhood character, etc.) - not just schools. Returns 
+    the clarifying sentences to append, or empty string if nothing needs it."""
+    prompt = f"""Read this real estate listing. Identify any SUBJECTIVE or 
+QUALITATIVE claims that could be ambiguous to a search system - things like 
+school ratings, home condition, renovation needs, or neighborhood character. 
+Do NOT flag purely factual/objective data (price, square footage, bedroom 
+count, address) - those need no clarification.
+
+For each subjective claim you find, add ONE short sentence using an EXPLICIT 
+quality adjective ("poor", "excellent", "underperforming", "outdated", 
+"move-in-ready", etc.) - do not describe who the home is "ideal for" or 
+imply quality indirectly. State the quality directly, e.g. "This school 
+district is poor and underperforming" NOT "This home suits buyers who value 
+other things over schools."
+...
+
+Output ONLY the clarifying sentences, one per claim, nothing else. If there 
+is nothing genuinely subjective/ambiguous to clarify, output nothing.
+
+Listing:
+{full_listing_text}
+
+Clarifying sentences:"""
+    response = _enrichment_llm.invoke(prompt).content.strip()
+    return response
 
 def extract_garage_spaces(chunk):
     if re.search(r"(does not have|no|without)\s+(a\s+)?garage", chunk, re.IGNORECASE):
@@ -102,14 +136,21 @@ for chunk in raw_chunks:
         "has_hoa": extract_has_hoa(chunk),
         "has_private_yard": extract_has_private_yard(chunk),
     }
-    school_text = extract_school_text(chunk)
-    sentiment_addition = enrich_with_sentiment(school_text)
+    dimension_enrichments = {}
+    for dim_name, dim_config in FUZZY_DIMENSIONS.items():
+        dim_text = extract_dimension_text(chunk, dim_config)
+        dimension_enrichments[dim_name] = {
+            "raw_text": dim_text,
+            "enrichment": enrich_dimension(dim_text, dim_name) if dim_text else "",
+        }
+    metadata["dimension_enrichments"] = dimension_enrichments
+    documents.append(Document(page_content=chunk.strip(), metadata=metadata))
 
-    enriched_content = chunk.strip()
-    if sentiment_addition:
-        enriched_content += " " + sentiment_addition
+# OLD:
+# school_text = extract_school_text(chunk)
+# sentiment_addition = enrich_with_sentiment(school_text)
 
-    documents.append(Document(page_content=enriched_content, metadata=metadata))
+# NEW:
 
 print(f"Built {len(documents)} documents\n")
 for doc in documents:
@@ -141,4 +182,3 @@ print(f"FAISS index built with {vectorstore.index.ntotal} vectors")
 vectorstore.save_local("../faiss_index")
 print("Saved FAISS index to ../faiss_index")
 
-# %%

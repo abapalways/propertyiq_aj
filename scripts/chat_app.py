@@ -8,7 +8,6 @@ import search
 import chat_agent  # needed to read the live-updated module variable, not a stale import snapshot
 
 from chat_agent import llm_with_tools, build_system_prompt, buyer_profiles, TOOL_MAP, vectorstore, embeddings
-from search import analyze_listings
 
 buyer_names = [b["name"] for b in buyer_profiles] + ["Guest"]
 
@@ -46,7 +45,6 @@ def _run_turn(messages_state):
 
     return response, messages_state
 
-from search import _cosine_similarity
 
 def build_trace_html(messages_state):
     if not messages_state:
@@ -54,7 +52,6 @@ def build_trace_html(messages_state):
 
     html = "<h4 style='color: #1a1a1a;'>Agent Trace</h4>"
     tool_call_names = {}
-    tool_call_args = {}
 
     for msg in messages_state:
         msg_type = type(msg).__name__
@@ -62,7 +59,6 @@ def build_trace_html(messages_state):
         if msg_type == "AIMessage" and getattr(msg, "tool_calls", None):
             for tc in msg.tool_calls:
                 tool_call_names[tc["id"]] = tc["name"]
-                tool_call_args[tc["id"]] = tc["args"]
                 args_str = ", ".join(f"{k}={v}" for k, v in tc["args"].items())
                 html += f"""
                 <div style="background-color: #e7f0ff; color: #1a1a1a; padding: 8px; margin: 4px 0; border-radius: 4px; border-left: 4px solid #4285f4;">
@@ -79,15 +75,22 @@ def build_trace_html(messages_state):
             </div>
             """
 
-            # If this was a search, show similarity scores too
+            # If this was a search, show ranked results too - scoped inside this
+            # branch so it only fires once, for the ToolMessage that actually
+            # triggered it, not on every later message in the conversation.
             if tool_name == "_search_listings_tool":
-                if search._last_rrf_scores:
+                if search._last_full_analysis:
+                    matched = sorted(
+                        [r for r in search._last_full_analysis if r["tier"] == "matched"],
+                        key=lambda r: r.get("_rrf_score", 0),
+                        reverse=True,
+                    )
                     html += """<div style="margin: 4px 0 12px 20px; font-size: 0.9em; color: #555;">
-                    <em>RRF scores (higher = better match, from the actual search):</em><ul>"""
-                    sorted_scores = sorted(search._last_rrf_scores.items(), key=lambda x: x[1], reverse=True)
-                    for listing_id, score in sorted_scores:
-                        html += f"<li>{listing_id}: {score:.5f}</li>"
+                    <em>Search results (from the actual search):</em><ul>"""
+                    for r in matched:
+                        html += f"<li>{r['listing_id']}: {r['reason']}</li>"
                     html += "</ul></div>"
+
     return html
 
 
@@ -98,12 +101,15 @@ def start_session(buyer_name):
     messages_state = [SystemMessage(system_prompt)]
     display_history = []
     return display_history, messages_state, build_trace_html(messages_state)
+
+
 from guardrails import Guard
 from guardrails.errors import ValidationError
 from guardrails_check import FairHousingCheck, OnTopicCheck
 
 _fair_housing_guard = Guard().use(FairHousingCheck())
 _on_topic_guard = Guard().use(OnTopicCheck())
+
 
 def _render_results_html(results, label):
     tier_order = {"matched": 0, "passed_but_not_selected": 1, "hard_filter_rejected": 2}
@@ -118,7 +124,10 @@ def _render_results_html(results, label):
         "hard_filter_rejected": "❌ REJECTED",
     }
 
-    sorted_results = sorted(results, key=lambda x: tier_order[x["tier"]])
+    sorted_results = sorted(
+        results,
+        key=lambda x: (tier_order[x["tier"]], -x.get("_rrf_score", 0))
+    )
     html = f"<h3 style='color: #1a1a1a;'>Analysis for {label}</h3>"
     for r in sorted_results:
         color = tier_colors[r["tier"]]
@@ -131,14 +140,28 @@ def _render_results_html(results, label):
             <strong style="color: #1a1a1a;">{label_text} — {r['listing_id']}</strong><br>
             <span style="color: #1a1a1a;">Price: ${price:,} | Bedrooms: {bedrooms}</span><br>
             <span style="color: #1a1a1a;">Reason: {r['reason']}</span>
-        </div>
         """
+        if r.get("nli_checks"):
+            html += "<div style='margin-top:6px; font-size:0.85em; color:#444;'><em>NLI trail:</em><ul>"
+            for check in r["nli_checks"]:
+                if check["outcome"] == "checked":
+                    html += (
+                        f"<li>'{check['criterion']}' → dimension={check['classified_dimension']} "
+                        f"(conf={check['classification_score']}) → NLI={check['nli_label']} "
+                        f"scores={check['nli_scores']}</li>"
+                    )
+                else:
+                    html += f"<li>'{check['criterion']}' → {check['outcome']}</li>"
+            html += "</ul></div>"
+        html += "</div>"
     return html
 
+
 def render_current_query_analysis():
-    if chat_agent._last_full_analysis is None:
+    if not search._last_full_analysis:
         return "<p>No search has been run yet.</p>"
-    return _render_results_html(chat_agent._last_full_analysis, "most recent search")
+    return _render_results_html(search._last_full_analysis, "most recent search")
+
 
 def respond(user_message, display_history, messages_state):
     try:
@@ -158,6 +181,7 @@ def respond(user_message, display_history, messages_state):
     display_history.append({"role": "assistant", "content": response.content})
     return "", display_history, messages_state, build_trace_html(messages_state)
 
+
 def end_session(buyer_name, messages_state):
     buyer = get_buyer(buyer_name)
     if buyer is None:
@@ -166,58 +190,6 @@ def end_session(buyer_name, messages_state):
     if result["applied"]:
         return "Saved: " + "; ".join(result["applied"])
     return "Nothing new to save from this session."
-
-
-_analysis_cache = {}
-
-
-def get_analysis(buyer_name):
-    if buyer_name == "Guest":
-        return []
-    if buyer_name not in _analysis_cache:
-        buyer = get_buyer(buyer_name)
-        rejected_ids = [r["listing_id"] for r in buyer["session_history"]["rejected_listings"]]
-        _analysis_cache[buyer_name] = analyze_listings(
-            buyer["preferences"], vectorstore, embeddings, rejected_listing_ids=rejected_ids
-        )
-    return _analysis_cache[buyer_name]
-
-
-def render_analysis_html(buyer_name):
-    results = get_analysis(buyer_name)
-    if not results:
-        return "<p>Select a buyer profile to see analysis (not available for Guest).</p>"
-
-    tier_order = {"matched": 0, "passed_but_not_selected": 1, "hard_filter_rejected": 2}
-    tier_colors = {
-        "matched": "#d4edda",
-        "passed_but_not_selected": "#fff3cd",
-        "hard_filter_rejected": "#f8d7da",
-    }
-    tier_labels = {
-        "matched": "✅ MATCHED",
-        "passed_but_not_selected": "🟡 PASSED FILTERS, NOT SELECTED",
-        "hard_filter_rejected": "❌ REJECTED",
-    }
-
-    sorted_results = sorted(results, key=lambda x: tier_order[x["tier"]])
-
-    html = f"<h3 style='color: #1a1a1a;'>Analysis for {buyer_name}</h3>"
-    for r in sorted_results:
-        color = tier_colors[r["tier"]]
-        label = tier_labels[r["tier"]]
-        doc = r["doc"]
-        price = doc.metadata.get("price")
-        bedrooms = doc.metadata.get("bedrooms")
-
-        html += f"""
-        <div style="background-color: {color}; color: #1a1a1a; padding: 12px; margin: 8px 0; border-radius: 6px; border: 1px solid #ccc;">
-            <strong style="color: #1a1a1a;">{label} — {r['listing_id']}</strong><br>
-            <span style="color: #1a1a1a;">Price: ${price:,} | Bedrooms: {bedrooms}</span><br>
-            <span style="color: #1a1a1a;">Reason: {r['reason']}</span>
-        </div>
-        """
-    return html
 
 
 with gr.Blocks(title="PropertyIQ — Chat Agent") as demo:
@@ -259,7 +231,6 @@ with gr.Blocks(title="PropertyIQ — Chat Agent") as demo:
                 debug_output = gr.HTML()
                 debug_refresh_btn = gr.Button("🔄 Refresh Analysis for Current Chat Buyer")
                 debug_refresh_btn.click(fn=render_current_query_analysis, inputs=[], outputs=debug_output)
-
 
 
 if __name__ == "__main__":

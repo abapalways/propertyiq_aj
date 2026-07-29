@@ -5,25 +5,16 @@
     "preferences": {
       "min_bedrooms": 5,
       "max_budget": 500000,
-      "must_haves": [
-        "good school district",
-        "garage"
-      ],
+      "must_haves": ["good school district", "garage"],
       "preferred_city": "Austin"
     },
     "session_history": {
       "current_session_id": "sess_002",
       "rejected_listings": [
         {
-          "listing_id": "L_ELM_124",
-          "address": "124 Elm Street",
-          "reason": "Yard is too small",
-          "timestamp": "2026-07-11T14:30:00Z"
-        },
-        {
-          "listing_id": "L_SPRUCE_106",
-          "reason": "needs too much work",
-          "timestamp": "2026-07-24T04:37:40.742614+00:00"
+          "listing_id": "L_WALNUT_107",
+          "reason": "Buyer requested rejection",
+          "timestamp": "2026-07-25T23:10:39.613885+00:00"
         }
       ]
     },
@@ -35,10 +26,7 @@
     "preferences": {
       "min_bedrooms": 2,
       "max_budget": 400000,
-      "must_haves": [
-        "private yard",
-        "garage"
-      ],
+      "must_haves": ["private yard", "garage"],
       "preferred_city": "Austin"
     },
     "session_history": {
@@ -59,9 +47,7 @@
     "preferences": {
       "min_bedrooms": 3,
       "max_budget": 460000,
-      "must_haves": [
-        "top-tier schools"
-      ],
+      "must_haves": ["top-tier schools"],
       "preferred_city": "Austin"
     },
     "session_history": {
@@ -76,9 +62,7 @@
     "preferences": {
       "min_bedrooms": 3,
       "max_budget": 500000,
-      "must_haves": [
-        "safe neighborhood"
-      ],
+      "must_haves": ["safe neighborhood"],
       "preferred_city": "Austin"
     },
     "session_history": {

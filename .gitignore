@@ -7,3 +7,4 @@ faiss_index/
 *.log
 .DS_Store
 scripts/.gradio/
+.vscode/

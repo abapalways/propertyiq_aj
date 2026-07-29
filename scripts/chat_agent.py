@@ -13,7 +13,7 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
 
-from search import search_listings, analyze_listings
+from search import search_listings
 
 from tools import calc_mortgage, get_comps
 from memory import reject_listing, undo_last_rejection, reset_rejected_listings
@@ -41,34 +41,27 @@ def _search_listings_tool(min_bedrooms: int, max_budget: float, must_haves: Opti
         k: Number of results to return, defaults to 3.
         rejected_listing_ids: List of listing IDs to exclude, defaults to none.
     """
-    global _last_full_analysis
-
     buyer_preferences = {
-            "min_bedrooms": min_bedrooms, "max_budget": max_budget,
-            "must_haves": must_haves or [], "preferred_city": preferred_city,
-        }
-
-        # Compute the FULL breakdown once - this IS the live query running
-    full_analysis = analyze_listings(buyer_preferences, vectorstore, embeddings, k=k, rejected_listing_ids=rejected_listing_ids or [])
-    _last_full_analysis = full_analysis  # stash it, no recomputation later
-
-    matched = [r for r in full_analysis if r["tier"] == "matched"]
+        "min_bedrooms": min_bedrooms, "max_budget": max_budget,
+        "must_haves": must_haves or [], "preferred_city": preferred_city,
+    }
+    results = search_listings(buyer_preferences, vectorstore, embeddings, k=k, rejected_listing_ids=rejected_listing_ids or [])
 
     output = []
-    for i, r in enumerate(matched, 1):
-            doc = r["doc"]
-            address_match = re.search(r"\*\*Address:\*\*\s*(.+)", doc.page_content)
-            address = address_match.group(1).strip() if address_match else None
-            output.append({
-                "rank": i,
-                "listing_id": doc.metadata.get("listing_id"),
-                "price": doc.metadata.get("price"),
-                "bedrooms": doc.metadata.get("bedrooms"),
-                "garage_spaces": doc.metadata.get("garage_spaces"),
-                "square_footage": doc.metadata.get("square_footage"),
-                "address": address,
-                "description": doc.page_content[:400],
-            })
+    for i, doc in enumerate(results, 1):
+        address_match = re.search(r"\*\*Address:\*\*\s*(.+)", doc.page_content)
+        address = address_match.group(1).strip() if address_match else None
+
+        output.append({
+            "rank": i,
+            "listing_id": doc.metadata.get("listing_id"),
+            "price": doc.metadata.get("price"),
+            "bedrooms": doc.metadata.get("bedrooms"),
+            "garage_spaces": doc.metadata.get("garage_spaces"),
+            "square_footage": doc.metadata.get("square_footage"),
+            "address": address,
+            "description": doc.page_content[:400],
+        })
     return output
 
 llm = ChatGroq(model="openai/gpt-oss-120b")
@@ -137,11 +130,10 @@ but make clear it will not be remembered next time."""
     If the buyer states preferences during conversation, simply acknowledge them naturally - 
     these will be saved automatically when the session ends.
     If the buyer states specific criteria directly in their message (e.g. "3-bedroom home", 
-    "under $400,000"), use ONLY those specific fields as stated for that search. For any 
-    preference field the buyer does NOT explicitly mention in their current message (such as 
-    must_haves items like "good school district"), continue using their stored preferences - 
-    merge explicit statements with stored preferences, do not replace the whole preference set 
-    just because only some criteria were mentioned.
+    "under $400,000", "move-in ready"), use ONLY what is stated in that message for that search - 
+    do not merge in stored preferences the buyer did not mention this turn, even if some fields 
+    are on file. Only fall back to their stored preferences when the buyer does not state specific 
+    criteria themselves (e.g. "show me listings that match my preferences").
     CRITICAL: When describing search results, you MUST only state facts that appear 
     literally in the "description" field returned by the search tool. Do NOT infer, 
     guess, or generate plausible-sounding details about schools, neighborhoods, or 
