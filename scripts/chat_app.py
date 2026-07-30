@@ -51,7 +51,26 @@ def build_trace_html(messages_state):
         return "<p>No activity yet.</p>"
 
     html = "<h4 style='color: #1a1a1a;'>Agent Trace</h4>"
+
+    # Guardrail badge
+    if _last_guardrail_status["blocked"]:
+        html += """<div style="display:inline-block; background:#f8d7da; color:#721c24; padding:4px 10px; border-radius:12px; font-size:0.85em; margin-right:8px;">
+        🛑 Guardrail: BLOCKED</div>"""
+    else:
+        html += """<div style="display:inline-block; background:#d4edda; color:#155724; padding:4px 10px; border-radius:12px; font-size:0.85em; margin-right:8px;">
+        🛡️ Guardrail: passed</div>"""
+
+    # Cache badge
+    stats = search._last_cache_stats
+    total = stats["hits"] + stats["misses"]
+    if total > 0:
+        html += f"""<div style="display:inline-block; background:#e7f0ff; color:#004085; padding:4px 10px; border-radius:12px; font-size:0.85em;">
+        📦 Cache: {stats['hits']} hits / {stats['misses']} misses</div><br><br>"""
+    else:
+        html += "<br><br>"
+
     tool_call_names = {}
+
 
     for msg in messages_state:
         msg_type = type(msg).__name__
@@ -163,17 +182,23 @@ def render_current_query_analysis():
     return _render_results_html(search._last_full_analysis, "most recent search")
 
 
+# In chat_app.py, near the top:
+_last_guardrail_status = {"blocked": False, "message": None}
+
 def respond(user_message, display_history, messages_state):
+    global _last_guardrail_status
     try:
         _fair_housing_guard.validate(user_message)
         _on_topic_guard.validate(user_message)
+        _last_guardrail_status = {"blocked": False, "message": None}
     except ValidationError as e:
-            error_text = str(e)
-            if "errors:" in error_text:
-                error_text = error_text.split("errors:", 1)[1].strip()
-            display_history.append({"role": "user", "content": user_message})
-            display_history.append({"role": "assistant", "content": error_text})
-            return "", display_history, messages_state, build_trace_html(messages_state)
+        error_text = str(e)
+        if "errors:" in error_text:
+            error_text = error_text.split("errors:", 1)[1].strip()
+        _last_guardrail_status = {"blocked": True, "message": error_text}
+        display_history.append({"role": "user", "content": user_message})
+        display_history.append({"role": "assistant", "content": error_text})
+        return "", display_history, messages_state, build_trace_html(messages_state)
 
     messages_state.append(HumanMessage(user_message))
     response, messages_state = _run_turn(messages_state)

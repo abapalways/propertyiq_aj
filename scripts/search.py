@@ -35,6 +35,15 @@ CHECKABLE_ATTRIBUTES = {
 # Cache for dimension canonical-phrase embeddings, built once per process
 _dimension_embeddings_cache = None
 
+# Cache for per-listing document embeddings, keyed by listing_id.
+# Listing text is static after ingestion, so once embedded, never needs
+# re-embedding for the lifetime of this process.
+_doc_embedding_cache = {}
+
+# Hit/miss counters for the MOST RECENT search only - reset at the start
+# of every search_listings() call, read by chat_app.py to render a badge.
+_last_cache_stats = {"hits": 0, "misses": 0}
+
 
 def _tokenize(text):
     return re.findall(r"\w+", text.lower())
@@ -98,6 +107,25 @@ def _build_bm25_index(candidates):
 def _cosine_similarity(a, b):
     a, b = np.array(a), np.array(b)
     return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+
+
+def _get_doc_embedding(doc, embeddings_model):
+    """Embed a listing's page_content, reusing a cached vector if this
+    listing has already been embedded once this session - listing text
+    is static after ingestion, so re-embedding it is always redundant."""
+    global _last_cache_stats
+    listing_id = doc.metadata.get("listing_id")
+
+    if listing_id in _doc_embedding_cache:
+        print(f"CACHE HIT: doc embedding for {listing_id}")
+        _last_cache_stats["hits"] += 1
+        return _doc_embedding_cache[listing_id]
+
+    print(f"CACHE MISS: doc embedding for {listing_id} - calling embeddings API")
+    _last_cache_stats["misses"] += 1
+    vector = embeddings_model.embed_documents([doc.page_content])[0]
+    _doc_embedding_cache[listing_id] = vector
+    return vector
 
 
 # --- Cosine-similarity fuzzy dimension classification (deterministic, no LLM) ---
@@ -191,6 +219,7 @@ def _check_contradiction(doc, criterion, dimension_embeddings, embeddings_model,
     raw_text = dimension_data["raw_text"]
     combined = f"{raw_text} {enrichment_text}"
     hypothesis = f"This home {criterion}."
+
     scores = _nli_model.predict([(combined, hypothesis)])
     label = _NLI_LABELS[scores.argmax()]
     print(f"LOG [NLI] {listing_id} dim={dim_name}: text='{combined[:80]}...' hypothesis='{hypothesis}' -> {label} (scores={scores[0].round(3)})")
@@ -208,7 +237,9 @@ def _check_contradiction(doc, criterion, dimension_embeddings, embeddings_model,
 _last_full_analysis = []  # module-level, built as a byproduct of the ONE real search_listings() run
 
 def search_listings(buyer_preferences, vectorstore, embeddings, k=3, rejected_listing_ids=None):
-    global _last_full_analysis
+    global _last_full_analysis, _last_cache_stats
+    _last_cache_stats = {"hits": 0, "misses": 0}
+
     if rejected_listing_ids is None:
         rejected_listing_ids = []
 
@@ -267,8 +298,6 @@ def search_listings(buyer_preferences, vectorstore, embeddings, k=3, rejected_li
         _last_full_analysis = breakdown
         return candidates[:k]
 
-    # Split fuzzy must_haves: confidently-classified dimension criteria (dense + NLI)
-    # vs unclassified criteria (keyword/named-entity - use BM25 instead)
     dimension_criteria = []
     keyword_criteria = []
     for criterion in fuzzy_must_haves:
@@ -291,7 +320,7 @@ def search_listings(buyer_preferences, vectorstore, embeddings, k=3, rejected_li
         query_vector = embeddings.embed_query(criterion)
         scored = []
         for doc in candidates:
-            doc_vector = embeddings.embed_documents([doc.page_content])[0]
+            doc_vector = _get_doc_embedding(doc, embeddings)
             sim = _cosine_similarity(query_vector, doc_vector)
             scored.append((sim, doc))
         scored.sort(key=lambda x: x[0], reverse=True)
@@ -317,10 +346,6 @@ def search_listings(buyer_preferences, vectorstore, embeddings, k=3, rejected_li
     rrf_ranked_docs = [doc_by_id[lid] for lid in rrf_ranked_ids]
     print(f"LOG [stage3] RRF scores after all criteria: {rrf_scores}")
 
-    # NLI contradiction check: exclude listings whose pre-enriched dimension
-    # text contradicts any fuzzy must-have. Each doc is matched back to its
-    # OWN breakdown entry by listing_id - never by tier - so a contradiction
-    # on one listing can't leak onto another's reason.
     non_contradicting_docs = []
     for doc in rrf_ranked_docs:
         listing_id = doc.metadata.get("listing_id")
