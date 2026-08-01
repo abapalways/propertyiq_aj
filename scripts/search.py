@@ -108,6 +108,25 @@ def _cosine_similarity(a, b):
     a, b = np.array(a), np.array(b)
     return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
 
+_query_embedding_cache = {}
+
+def _get_query_embedding(criterion_text, embeddings_model):
+    """Embed a buyer's criterion text, reusing a cached vector if this
+    exact criterion string has been searched before this session.
+    Only catches exact string repeats, not semantically similar phrasings
+    (e.g. "top-rated schools" and "excellent schools" are separate entries)."""
+    global _last_cache_stats
+    if criterion_text in _query_embedding_cache:
+        print(f"CACHE HIT: query embedding for '{criterion_text}'")
+        _last_cache_stats["hits"] += 1
+        return _query_embedding_cache[criterion_text]
+
+    print(f"CACHE MISS: query embedding for '{criterion_text}' - calling embeddings API")
+    _last_cache_stats["misses"] += 1
+    vector = embeddings_model.embed_query(criterion_text)
+    _query_embedding_cache[criterion_text] = vector
+    return vector
+
 
 def _get_doc_embedding(doc, embeddings_model):
     """Embed a listing's page_content, reusing a cached vector if this
@@ -317,7 +336,7 @@ def search_listings(buyer_preferences, vectorstore, embeddings, k=3, rejected_li
 
     # Dense RRF for dimension-classified criteria
     for criterion in dimension_criteria:
-        query_vector = embeddings.embed_query(criterion)
+        query_vector = _get_query_embedding(criterion, embeddings)   # was: embeddings.embed_query(criterion)
         scored = []
         for doc in candidates:
             doc_vector = _get_doc_embedding(doc, embeddings)

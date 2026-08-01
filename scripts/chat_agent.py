@@ -32,14 +32,7 @@ from typing import Optional
 _last_full_analysis = None
 def _search_listings_tool(min_bedrooms: int, max_budget: float, must_haves: Optional[list] = None, preferred_city: Optional[str] = None, k: int = 3, rejected_listing_ids: Optional[list] = None) -> list:
     """Search for property listings matching a buyer's criteria.
-
-    Args:
-        min_bedrooms: Minimum number of bedrooms required.
-        max_budget: Maximum price the buyer will pay.
-        must_haves: List of short phrases describing required features, e.g. ["garage", "good school district"]. Optional.
-        preferred_city: The city the buyer wants to live in, e.g. "Austin". Optional.
-        k: Number of results to return, defaults to 3.
-        rejected_listing_ids: List of listing IDs to exclude, defaults to none.
+    ... (docstring unchanged)
     """
     buyer_preferences = {
         "min_bedrooms": min_bedrooms, "max_budget": max_budget,
@@ -52,6 +45,18 @@ def _search_listings_tool(min_bedrooms: int, max_budget: float, must_haves: Opti
         address_match = re.search(r"\*\*Address:\*\*\s*(.+)", doc.page_content)
         address = address_match.group(1).strip() if address_match else None
 
+        # Surface the VERIFIED dimension enrichments directly, rather than
+        # relying on the truncated description[:400] to happen to include
+        # the school/condition text - which it often doesn't (the Key
+        # Features section, where this data lives, frequently falls after
+        # the 400-char cutoff). This is the same enrichment data already
+        # used internally for NLI contradiction-checking - now also
+        # surfaced to the LLM so it can report it accurately instead of
+        # inventing plausible-sounding details for information it never saw.
+        enrichments = doc.metadata.get("dimension_enrichments", {})
+        school_info = enrichments.get("school_quality", {}).get("raw_text")
+        condition_info = enrichments.get("condition", {}).get("raw_text")
+
         output.append({
             "rank": i,
             "listing_id": doc.metadata.get("listing_id"),
@@ -61,6 +66,8 @@ def _search_listings_tool(min_bedrooms: int, max_budget: float, must_haves: Opti
             "square_footage": doc.metadata.get("square_footage"),
             "address": address,
             "description": doc.page_content[:400],
+            "school_district_info": school_info,      # None if not available - LLM must say so, not guess
+            "condition_info": condition_info,          # None if not available - LLM must say so, not guess
         })
     return output
 
@@ -87,7 +94,16 @@ def build_system_prompt(buyer):
 there is no saved profile and nothing is remembered between sessions. Do not ask about 
 previously rejected listings, since none are tracked for guests. If the guest wants to 
 exclude a specific listing from just this search, you may do so for this one search only, 
-but make clear it will not be remembered next time."""
+but make clear it will not be remembered next time.
+
+CRITICAL: When describing search results, you MUST only state facts that appear 
+literally in the "description", "school_district_info", or "condition_info" 
+fields returned by the search tool. Do NOT infer, guess, or generate 
+plausible-sounding details about schools, neighborhoods, letter grades, or 
+any other attribute. If "school_district_info" or "condition_info" is null, 
+say the information isn't available for that listing rather than inventing 
+a plausible answer. Quote or closely paraphrase only what is actually 
+written in these fields."""
 
     prefs = buyer.get("preferences", {})
     rejected = buyer.get("session_history", {}).get("rejected_listings", [])
@@ -135,12 +151,13 @@ but make clear it will not be remembered next time."""
     are on file. Only fall back to their stored preferences when the buyer does not state specific 
     criteria themselves (e.g. "show me listings that match my preferences").
     CRITICAL: When describing search results, you MUST only state facts that appear 
-    literally in the "description" field returned by the search tool. Do NOT infer, 
-    guess, or generate plausible-sounding details about schools, neighborhoods, or 
-    any other attribute. If the description does not explicitly mention something 
-    (e.g. a specific school name or rating), do not mention it at all - omit it 
-    rather than invent it. Quote or closely paraphrase only what is actually written 
-    in the description text.
+    literally in the "description", "school_district_info", or "condition_info" 
+    fields returned by the search tool. Do NOT infer, guess, or generate 
+    plausible-sounding details about schools, neighborhoods, letter grades, or 
+    any other attribute. If "school_district_info" or "condition_info" is null, 
+    say the information isn't available for that listing rather than inventing 
+    a plausible answer. Quote or closely paraphrase only what is actually 
+    written in these fields.
     When presenting search results, ALWAYS format them as a markdown table with exactly 
     4 columns: "Rank", "Listing ID", "Price", and "Key Details". Rank reflects how well 
     each listing matches the buyer's fuzzy/qualitative criteria, best match first - 
