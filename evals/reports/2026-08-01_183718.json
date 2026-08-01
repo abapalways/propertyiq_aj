@@ -1,0 +1,117 @@
+{
+  "timestamp": "2026-08-01T18:37:08.787074+00:00",
+  "results": [
+    {
+      "id": "poor_schools_excluded",
+      "passed": true,
+      "failures": [],
+      "result_ids": [
+        "E_QUARRY_207",
+        "E_LINCOLN_206",
+        "E_HARBOR_202",
+        "E_MAPLEWOOD_201",
+        "E_OVERBUDGET_208",
+        "E_NOGARAGE_210",
+        "E_BIRCHFIELD_205",
+        "E_COMPACT_209"
+      ]
+    },
+    {
+      "id": "needs_work_excluded_from_move_in_ready",
+      "passed": true,
+      "failures": [],
+      "result_ids": [
+        "E_MAPLEWOOD_201",
+        "E_NOGARAGE_210",
+        "E_QUARRY_207",
+        "E_LINCOLN_206",
+        "E_TRAILSIDE_204",
+        "E_BIRCHFIELD_205",
+        "E_SUNSET_203",
+        "E_COMPACT_209",
+        "E_OVERBUDGET_208"
+      ]
+    },
+    {
+      "id": "budget_hard_filter",
+      "passed": true,
+      "failures": [],
+      "result_ids": [
+        "E_MAPLEWOOD_201",
+        "E_HARBOR_202",
+        "E_SUNSET_203",
+        "E_TRAILSIDE_204",
+        "E_BIRCHFIELD_205",
+        "E_LINCOLN_206",
+        "E_QUARRY_207",
+        "E_COMPACT_209",
+        "E_NOGARAGE_210"
+      ]
+    },
+    {
+      "id": "bedroom_hard_filter",
+      "passed": true,
+      "failures": [],
+      "result_ids": [
+        "E_MAPLEWOOD_201",
+        "E_HARBOR_202",
+        "E_SUNSET_203",
+        "E_TRAILSIDE_204",
+        "E_BIRCHFIELD_205",
+        "E_LINCOLN_206",
+        "E_QUARRY_207",
+        "E_OVERBUDGET_208",
+        "E_NOGARAGE_210"
+      ]
+    },
+    {
+      "id": "garage_checkable_attribute",
+      "passed": true,
+      "failures": [],
+      "result_ids": [
+        "E_MAPLEWOOD_201",
+        "E_HARBOR_202",
+        "E_SUNSET_203",
+        "E_TRAILSIDE_204",
+        "E_BIRCHFIELD_205",
+        "E_LINCOLN_206",
+        "E_QUARRY_207",
+        "E_OVERBUDGET_208",
+        "E_COMPACT_209"
+      ]
+    },
+    {
+      "id": "bm25_named_entity_match",
+      "passed": true,
+      "failures": [],
+      "result_ids": [
+        "E_LINCOLN_206",
+        "E_MAPLEWOOD_201",
+        "E_HARBOR_202",
+        "E_SUNSET_203",
+        "E_TRAILSIDE_204",
+        "E_BIRCHFIELD_205",
+        "E_QUARRY_207",
+        "E_OVERBUDGET_208",
+        "E_COMPACT_209",
+        "E_NOGARAGE_210"
+      ]
+    },
+    {
+      "id": "no_enrichment_passes_through",
+      "passed": true,
+      "failures": [],
+      "result_ids": [
+        "E_QUARRY_207",
+        "E_LINCOLN_206",
+        "E_HARBOR_202",
+        "E_MAPLEWOOD_201",
+        "E_OVERBUDGET_208",
+        "E_NOGARAGE_210",
+        "E_BIRCHFIELD_205",
+        "E_COMPACT_209"
+      ]
+    }
+  ],
+  "score": "7/7"
+}

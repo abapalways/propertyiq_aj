@@ -236,7 +236,7 @@ def _check_contradiction(doc, criterion, dimension_embeddings, embeddings_model,
 
     enrichment_text = dimension_data["enrichment"]
     raw_text = dimension_data["raw_text"]
-    combined = f"{raw_text} {enrichment_text}"
+    combined = f"{enrichment_text} {raw_text}"
     hypothesis = f"This home {criterion}."
 
     scores = _nli_model.predict([(combined, hypothesis)])

@@ -96,7 +96,7 @@ A charming home in a well-established neighborhood, close to shopping and dining
 - **Amenities:** Fenced backyard, covered patio, storage shed.
 - **Garage:** 2-car attached garage.
 
-_(No school or condition information provided in this listing — intended to test the "no enrichment data available" pass-through case.)_
+_(This listing intentionally omits information about nearby education options and the property's overall state, to exercise the "no enrichment data available" pass-through code path in testing.)_
 
 ---
 
