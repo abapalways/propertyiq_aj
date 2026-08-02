@@ -32,8 +32,7 @@ import re
 from langchain_core.documents import Document
 from langchain_groq import ChatGroq
 
-_enrichment_llm = ChatGroq(model="openai/gpt-oss-120b")
-
+_enrichment_llm = ChatGroq(model="openai/gpt-oss-120b", temperature=0)
 # NOTE: deliberately NOT using CharacterTextSplitter here. Its chunk_size
 # parameter doesn't just split on the separator - it also MERGES adjacent
 # split chunks back together if their combined size stays under chunk_size.

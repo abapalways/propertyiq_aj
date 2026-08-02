@@ -35,7 +35,7 @@ raw_chunks = splitter.split_text(text)
 import re
 from langchain_groq import ChatGroq
 
-_enrichment_llm = ChatGroq(model="openai/gpt-oss-120b")
+_enrichment_llm = ChatGroq(model="openai/gpt-oss-120b", temperature = 0)
 
 def extract_dimension_text(chunk, dimension_config):
     matched_lines = []

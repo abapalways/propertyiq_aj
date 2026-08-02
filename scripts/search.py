@@ -48,6 +48,11 @@ _last_cache_stats = {"hits": 0, "misses": 0}
 def _tokenize(text):
     return re.findall(r"\w+", text.lower())
 
+class SearchUnavailableError(Exception):
+    """Raised when the embedding API is unavailable (e.g. transient 503),
+    so callers can catch this specifically and return a graceful message
+    instead of letting a raw API traceback reach the user."""
+    pass
 
 class _SimpleBM25:
     """Minimal BM25 (Okapi) implementation - no external dependency."""
@@ -123,7 +128,11 @@ def _get_query_embedding(criterion_text, embeddings_model):
 
     print(f"CACHE MISS: query embedding for '{criterion_text}' - calling embeddings API")
     _last_cache_stats["misses"] += 1
-    vector = embeddings_model.embed_query(criterion_text)
+    try:
+        vector = embeddings_model.embed_query(criterion_text)
+    except Exception as e:
+        print(f"ERROR: embedding API call failed for query '{criterion_text}': {e}")
+        raise SearchUnavailableError(f"Embedding API unavailable: {e}") from e
     _query_embedding_cache[criterion_text] = vector
     return vector
 
@@ -142,7 +151,11 @@ def _get_doc_embedding(doc, embeddings_model):
 
     print(f"CACHE MISS: doc embedding for {listing_id} - calling embeddings API")
     _last_cache_stats["misses"] += 1
-    vector = embeddings_model.embed_documents([doc.page_content])[0]
+    try:
+            vector = embeddings_model.embed_documents([doc.page_content])[0]
+    except Exception as e:
+            print(f"ERROR: embedding API call failed for {listing_id}: {e}")
+            raise SearchUnavailableError(f"Embedding API unavailable: {e}") from e
     _doc_embedding_cache[listing_id] = vector
     return vector
 
@@ -177,7 +190,11 @@ def classify_fuzzy_dimension(criterion_text, dimension_embeddings, embeddings_mo
     Returns (dimension_name, best_phrase, score) if confident,
     else (None, None, best_score_seen) so caller can fall back to plain RRF.
     """
-    query_vec = embeddings_model.embed_query(criterion_text)
+    try:
+        query_vec = embeddings_model.embed_query(criterion_text)
+    except Exception as e:
+        print(f"ERROR: embedding API call failed during classification for '{criterion_text}': {e}")
+        raise SearchUnavailableError(f"Embedding API unavailable: {e}") from e
 
     best_dim = None
     best_phrase = None
@@ -236,7 +253,7 @@ def _check_contradiction(doc, criterion, dimension_embeddings, embeddings_model,
 
     enrichment_text = dimension_data["enrichment"]
     raw_text = dimension_data["raw_text"]
-    combined = f"{enrichment_text} {raw_text}"
+    combined = f"{raw_text} {enrichment_text}"
     hypothesis = f"This home {criterion}."
 
     scores = _nli_model.predict([(combined, hypothesis)])

@@ -13,7 +13,7 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
 
-from search import search_listings
+from search import search_listings, SearchUnavailableError
 
 from tools import calc_mortgage, get_comps
 from memory import reject_listing, undo_last_rejection, reset_rejected_listings
@@ -26,8 +26,6 @@ with open("../data/buyer_profiles.json") as f:
     buyer_profiles = json.load(f)
 
 
-
-
 from typing import Optional
 _last_full_analysis = None
 def _search_listings_tool(min_bedrooms: int, max_budget: float, must_haves: Optional[list] = None, preferred_city: Optional[str] = None, k: int = 3, rejected_listing_ids: Optional[list] = None) -> list:
@@ -38,7 +36,10 @@ def _search_listings_tool(min_bedrooms: int, max_budget: float, must_haves: Opti
         "min_bedrooms": min_bedrooms, "max_budget": max_budget,
         "must_haves": must_haves or [], "preferred_city": preferred_city,
     }
-    results = search_listings(buyer_preferences, vectorstore, embeddings, k=k, rejected_listing_ids=rejected_listing_ids or [])
+    try:
+        results = search_listings(buyer_preferences, vectorstore, embeddings, k=k, rejected_listing_ids=rejected_listing_ids or [])
+    except SearchUnavailableError:
+        return {"error": "Search is temporarily unavailable right now (the search service returned an error). Please try again in a moment."}
 
     output = []
     for i, doc in enumerate(results, 1):
@@ -103,7 +104,11 @@ plausible-sounding details about schools, neighborhoods, letter grades, or
 any other attribute. If "school_district_info" or "condition_info" is null, 
 say the information isn't available for that listing rather than inventing 
 a plausible answer. Quote or closely paraphrase only what is actually 
-written in these fields."""
+written in these fields.
+When presenting search results, ALWAYS format them as a markdown table with exactly 
+    4 columns: "Rank", "Listing ID", "Price", and "Key Details". Rank reflects how well 
+    each listing matches the buyer's fuzzy/qualitative criteria, best match first - 
+    always preserve the order given by the search tool, do not reorder results yourself."""
 
     prefs = buyer.get("preferences", {})
     rejected = buyer.get("session_history", {}).get("rejected_listings", [])
