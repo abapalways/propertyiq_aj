@@ -27,6 +27,7 @@ CUSTOM_CSS = """
 
 .gradio-container {
     max-width: 1360px !important;
+    width: 100% !important;
     margin: auto !important;
     background: var(--paper) !important;
     font-family: 'IBM Plex Sans', sans-serif !important;
