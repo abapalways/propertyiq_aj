@@ -153,7 +153,6 @@ Beautifully manicured property featuring high-end custom cabinetry, granite coun
 ### Key Features & Context
 
 - **School District:** Zoned for the exemplary Eanes School District (10/10 rating).
-- **Price Test:** At $455,000, this property sits just above the $450,000 figure used in requirements.md's flagship sample query ("3-bed homes under $450K near good schools") — useful for testing that boundary via query text directly. Note: this is not tied to any current buyer profile's budget cap (B003's cap is $460,000, so this listing is a valid match for B003).
 - **Amenities:** 2-car attached garage.
 
 ---
