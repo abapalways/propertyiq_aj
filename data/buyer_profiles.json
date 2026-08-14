@@ -3,7 +3,7 @@
     "buyer_id": "B001",
     "name": "The Torres Family",
     "preferences": {
-      "min_bedrooms": 5,
+      "min_bedrooms": 3,
       "max_budget": 500000,
       "must_haves": [
         "good school district",
@@ -18,6 +18,11 @@
           "listing_id": "L_WALNUT_107",
           "reason": "Buyer requested rejection",
           "timestamp": "2026-07-25T23:10:39.613885+00:00"
+        },
+        {
+          "listing_id": "L_PECAN_108",
+          "reason": "outside our preferred style",
+          "timestamp": "2026-08-14T14:49:52.597404+00:00"
         }
       ]
     },
