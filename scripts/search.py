@@ -13,7 +13,7 @@ Pipeline:
 """
 import math
 from collections import Counter
-
+from datetime import datetime, timezone
 import os
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 import re
@@ -271,9 +271,9 @@ def _check_contradiction(doc, criterion, dimension_embeddings, embeddings_model,
 
 
 _last_full_analysis = []  # module-level, built as a byproduct of the ONE real search_listings() run
-
+_search_log = []  # running log of every search this session, for the compliance dashboard
 def search_listings(buyer_preferences, vectorstore, embeddings, k=3, rejected_listing_ids=None):
-    global _last_full_analysis, _last_cache_stats
+    global _last_full_analysis, _last_cache_stats, _search_log
     _last_cache_stats = {"hits": 0, "misses": 0}
 
     if rejected_listing_ids is None:
@@ -320,19 +320,30 @@ def search_listings(buyer_preferences, vectorstore, embeddings, k=3, rejected_li
 
     if not candidates:
         _last_full_analysis = breakdown
+        _search_log.append({
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "filters": {"max_budget": max_budget, "min_bedrooms": min_bedrooms, "preferred_city": preferred_city, "must_haves": must_haves},
+            "num_results": 0,
+        })
+        return []
         return []
 
     fuzzy_must_haves = [mh for mh in must_haves if _matches_checkable(mh) is None]
     print(f"LOG [stage1] must_haves={must_haves} -> checkable(hard-filtered)={[mh for mh in must_haves if _matches_checkable(mh)]}, fuzzy={fuzzy_must_haves}")
 
     if not fuzzy_must_haves:
-        matched_ids = {doc.metadata.get("listing_id") for doc in candidates[:k]}
-        for r in breakdown:
-            if r["listing_id"] in matched_ids:
-                r["tier"] = "matched"
-                r["reason"] = "selected (no fuzzy criteria to rank by)"
-        _last_full_analysis = breakdown
-        return candidates[:k]
+            matched_ids = {doc.metadata.get("listing_id") for doc in candidates[:k]}
+            for r in breakdown:
+                if r["listing_id"] in matched_ids:
+                    r["tier"] = "matched"
+                    r["reason"] = "selected (no fuzzy criteria to rank by)"
+            _last_full_analysis = breakdown
+            _search_log.append({
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "filters": {"max_budget": max_budget, "min_bedrooms": min_bedrooms, "preferred_city": preferred_city, "must_haves": must_haves},
+                "num_results": len(candidates[:k]),
+            })
+            return candidates[:k]
 
     dimension_criteria = []
     keyword_criteria = []
@@ -423,4 +434,9 @@ def search_listings(buyer_preferences, vectorstore, embeddings, k=3, rejected_li
                 r["reason"] = f"selected — {r['reason']}"
 
     _last_full_analysis = breakdown
-    return final_docs
+    _search_log.append({
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "filters": {"max_budget": max_budget, "min_bedrooms": min_bedrooms, "preferred_city": preferred_city, "must_haves": must_haves},
+            "num_results": len(final_docs),
+        })
+    return final_docs 
