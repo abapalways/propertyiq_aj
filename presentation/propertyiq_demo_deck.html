@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>PropertyIQ — Demo Day</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+:root {
+    --ink: #1E2A28;
+    --paper: #EEF0EA;
+    --paper-raised: #F7F8F4;
+    --rule: #C3CDC2;
+    --pine: #2F6F5E;
+    --pine-tint: #DEE9E2;
+    --rust: #B5482F;
+    --rust-tint: #F3DFD8;
+    --brass: #9C7A1E;
+    --brass-tint: #F0E6C8;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--ink);
+    font-family: 'IBM Plex Sans', sans-serif;
+    color: var(--ink);
+    overflow: hidden;
+}
+
+.slide {
+    display: none;
+    width: 100vw; height: 100vh;
+    background: var(--paper);
+    padding: 64px 96px;
+    flex-direction: column;
+    justify-content: center;
+    position: relative;
+}
+.slide.active { display: flex; }
+
+.eyebrow {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--pine);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.timebadge {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    border: 1.5px solid var(--brass);
+    color: var(--brass);
+    background: var(--brass-tint);
+    padding: 3px 10px;
+    border-radius: 3px;
+    transform: rotate(-1deg);
+}
+
+h1 {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: 56px;
+    line-height: 1.05;
+    margin: 0 0 28px 0;
+    letter-spacing: -0.01em;
+}
+h1.title-slide { font-size: 76px; }
+
+ul.points {
+    list-style: none;
+    padding: 0; margin: 0;
+    font-size: 24px;
+    line-height: 1.55;
+}
+ul.points li {
+    padding-left: 28px;
+    position: relative;
+    margin-bottom: 18px;
+}
+ul.points li::before {
+    content: "—";
+    position: absolute; left: 0;
+    color: var(--pine);
+    font-weight: 600;
+}
+ul.points li strong { color: var(--pine); }
+ul.points li.rust::before { color: var(--rust); }
+ul.points li.rust strong { color: var(--rust); }
+
+.callout {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 18px;
+    background: var(--paper-raised);
+    border-left: 3px solid var(--rust);
+    padding: 16px 20px;
+    margin-top: 24px;
+    border-radius: 4px;
+}
+.callout.pine { border-left-color: var(--pine); }
+
+.subtitle {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 20px;
+    color: var(--ink);
+    opacity: 0.7;
+    margin-bottom: 8px;
+}
+
+.flowchart-wrap {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-top: 8px;
+}
+.flowchart-wrap img {
+    max-height: 62vh;
+    border-radius: 6px;
+    border: 1px solid var(--rule);
+    background: white;
+    padding: 12px;
+}
+
+.two-col {
+    display: flex;
+    gap: 56px;
+    align-items: flex-start;
+}
+.two-col .col { flex: 1; }
+
+.demo-msg {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 20px;
+    background: var(--paper-raised);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--pine);
+    padding: 14px 18px;
+    border-radius: 5px;
+    margin-bottom: 16px;
+}
+.demo-msg .label {
+    font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--pine); opacity: 0.85; display: block; margin-bottom: 6px;
+}
+.demo-msg.rust { border-left-color: var(--rust); }
+.demo-msg.rust .label { color: var(--rust); }
+
+.stat-row {
+    display: flex; gap: 24px; margin-top: 12px;
+}
+.stat {
+    background: var(--paper-raised);
+    border-radius: 6px;
+    border-left: 3px solid var(--pine);
+    padding: 20px 22px;
+    flex: 1;
+}
+.stat .num {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: 40px;
+    color: var(--ink);
+}
+.stat .lbl {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    opacity: 0.65;
+    margin-top: 4px;
+}
+
+.progress {
+    position: absolute;
+    bottom: 28px; left: 96px; right: 96px;
+    display: flex; gap: 6px;
+}
+.progress .dot {
+    flex: 1; height: 3px; background: var(--rule); border-radius: 2px;
+}
+.progress .dot.done { background: var(--pine); }
+
+.slidenum {
+    position: absolute; top: 32px; right: 96px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px; opacity: 0.5;
+}
+
+.hint {
+    position: fixed; bottom: 10px; right: 16px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px; color: var(--paper); opacity: 0.4;
+}
+</style>
+</head>
+<body>
+
+<!-- SLIDE 0: Title -->
+<div class="slide active">
+    <div class="eyebrow">Agentic AI Project Demo Day</div>
+    <h1 class="title-slide">PropertyIQ</h1>
+    <div class="subtitle">A compliance-aware property search agent</div>
+    <div class="slidenum">01 / 08</div>
+</div>
+
+<!-- SLIDE 1: Situation -->
+<div class="slide">
+    <div class="eyebrow"><span class="timebadge">1 min</span> Situation</div>
+    <h1>Who this is for, and what it replaces</h1>
+    <ul class="points">
+        <li>Real estate buyers searching listings by <strong>structured criteria</strong> (price, bedrooms, garage) and <strong>fuzzy, qualitative criteria</strong> (good schools, move-in ready)</li>
+        <li>A chat agent replaces manual portal filtering — plus mortgage estimation, comps lookup, and cross-session memory of rejected listings</li>
+    </ul>
+    <div class="slidenum">02 / 08</div>
+</div>
+
+<!-- SLIDE 2: Complication -->
+<div class="slide">
+    <div class="eyebrow"><span class="timebadge">1 min</span> Complication</div>
+    <h1>Today, one decision means many destinations</h1>
+    <ul class="points">
+        <li class="rust">Without an integrated agent, a buyer <strong>searches listings</strong> on one site or portal</li>
+        <li class="rust">Then goes <strong>somewhere else entirely</strong> to calculate a mortgage payment</li>
+        <li class="rust">Then <strong>somewhere else again</strong> for comps, or other integrations layered on separately</li>
+        <li class="rust">Every hop is a place the buyer can lose momentum — or leave</li>
+    </ul>
+    <div class="slidenum">03 / 08</div>
+</div>
+
+<!-- SLIDE 3: Implication -->
+<div class="slide">
+    <div class="eyebrow"><span class="timebadge">1 min</span> Implication</div>
+    <h1>What fragmentation costs the business</h1>
+    <ul class="points">
+        <li class="rust"><strong>Lost revenue</strong> — buyers drop off when there's no one-stop shop for their whole decision</li>
+        <li class="rust"><strong>Dissatisfaction</strong> — repeated context-switching across tools erodes trust in the experience</li>
+        <li class="rust">A buyer who leaves to check a mortgage calculator elsewhere <strong>may not come back</strong></li>
+    </ul>
+    <div class="slidenum">04 / 08</div>
+</div>
+
+<!-- SLIDE 4: Position — Architecture -->
+<div class="slide">
+    <div class="eyebrow"><span class="timebadge">3 min</span> Position — Our Solution</div>
+    <h1>Retrieval and truthfulness, as two separate steps</h1>
+    <div class="flowchart-wrap">
+        <img src="flowchart.png" alt="Search pipeline flowchart">
+    </div>
+    <div class="slidenum">05 / 08</div>
+</div>
+
+<!-- SLIDE 5: Position — Rest of the system -->
+<div class="slide">
+    <div class="eyebrow"><span class="timebadge">3 min</span> Position — Beyond Search</div>
+    <h1>Tools, guardrails, memory, evals</h1>
+    <div class="two-col">
+        <div class="col">
+            <ul class="points">
+                <li><strong>Tool calling:</strong> search, mortgage calc, comps lookup, rejection memory — with dedup guards against redundant repeated calls</li>
+                <li><strong>Guardrails:</strong> fair-housing check runs <em>before</em> search — a blocked request never touches the vector store</li>
+            </ul>
+        </div>
+        <div class="col">
+            <ul class="points">
+                <li><strong>Memory:</strong> rejected listings persist across sessions — verified across a real process restart</li>
+                <li><strong>Evals:</strong> assertion-based suite + LLM-as-judge groundedness check — two complementary types</li>
+                <li><strong>Observability:</strong> full LangSmith tracing, every call</li>
+            </ul>
+        </div>
+    </div>
+    <div class="slidenum">06 / 08</div>
+</div>
+
+<!-- SLIDE 6: Live Demo cue card -->
+<div class="slide">
+    <div class="eyebrow"><span class="timebadge">2 min</span> Live Demo</div>
+    <h1>What to run, live</h1>
+    <div class="demo-msg">
+        <span class="label">Message 1 — as Guest</span>
+        "3-bed homes under $450K near good schools"
+        <div style="margin-top:8px; font-size:15px; opacity:0.75;">→ Point out: real school text, correct budget boundary handling</div>
+    </div>
+    <div class="demo-msg rust">
+        <span class="label">Message 2</span>
+        "Only show us listings in neighborhoods with fewer immigrant families."
+        <div style="margin-top:8px; font-size:15px; opacity:0.75;">→ Point out: blocked before search — visible as a guardrail stamp in Agent Trace</div>
+    </div>
+    <div class="callout pine">Then: switch to the <strong>Dashboard</strong> tab — show the live compliance log and guardrail trigger rate.</div>
+    <div class="slidenum">07 / 08</div>
+</div>
+
+<!-- SLIDE 7: Benefits -->
+<div class="slide">
+    <div class="eyebrow"><span class="timebadge">2 min</span> Benefits</div>
+    <h1>Measured outcomes, not claims</h1>
+    <div class="stat-row">
+        <div class="stat"><div class="num">3 / 3</div><div class="lbl">Groundedness, post-fix</div></div>
+        <div class="stat"><div class="num">2.1×</div><div class="lbl">Search latency reduction</div></div>
+        <div class="stat"><div class="num">7 / 7</div><div class="lbl">Eval score, up from 6/7</div></div>
+    </div>
+    <ul class="points" style="margin-top:32px;">
+        <li>Full audit trail — every search's filters and every guardrail decision, logged and visible</li>
+    </ul>
+    <div class="slidenum">08 / 08</div>
+</div>
+
+<!-- SLIDE 8: Learnings -->
+<div class="slide">
+    <div class="eyebrow"><span class="timebadge">2 min</span> Learnings</div>
+    <h1>What this project actually taught us</h1>
+    <ul class="points">
+        <li><strong>Search is genuinely harder than it looks</strong> — pushed past the first "good enough" answer multiple times to find an architecture that actually held up under real testing</li>
+        <li><strong>Guardrails and memory were new territory</strong> — first hands-on implementation of compliance enforcement and cross-session persistence in an agentic system</li>
+        <li><strong>Prompt engineering was constant, front-line work</strong> — continuously distilling and filtering down to only the information the model actually needed, at every layer of the pipeline</li>
+        <li>Built the discipline to <strong>test a fix against a second, independent check</strong> before trusting it — not just the first eval that passes</li>
+    </ul>
+    <div class="slidenum">09 / 09</div>
+</div>
+
+<div class="hint">← → or space to navigate</div>
+
+<script>
+const slides = document.querySelectorAll('.slide');
+let current = 0;
+
+function show(i) {
+    slides[current].classList.remove('active');
+    current = Math.max(0, Math.min(slides.length - 1, i));
+    slides[current].classList.add('active');
+}
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === ' ') { show(current + 1); e.preventDefault(); }
+    if (e.key === 'ArrowLeft') { show(current - 1); }
+});
+
+document.addEventListener('click', () => show(current + 1));
+</script>
+
+</body>
+</html>
