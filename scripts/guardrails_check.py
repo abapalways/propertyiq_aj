@@ -5,7 +5,7 @@ filtering - more robust to paraphrasing/proxies than regex.
 """
 from guardrails import Guard
 from guardrails.validators import Validator, register_validator, PassResult, FailResult
-from guardrails.hub import DetectPII
+# from guardrails.hub import DetectPII  # disabled - hub package naming mismatch, not used by FairHousingCheck/OnTopicCheck
 import os
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
@@ -83,7 +83,7 @@ Answer:"""
             )
         return PassResult()
 
-from guardrails.hub import DetectPII
+# from guardrails.hub import DetectPII  # see note above
 
 
 def build_pii_guard():
