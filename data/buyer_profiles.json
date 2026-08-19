@@ -15,14 +15,9 @@
       "current_session_id": "sess_002",
       "rejected_listings": [
         {
-          "listing_id": "L_WALNUT_107",
+          "listing_id": "L_PINE_101",
           "reason": "Buyer requested rejection",
-          "timestamp": "2026-07-25T23:10:39.613885+00:00"
-        },
-        {
-          "listing_id": "L_PECAN_108",
-          "reason": "outside our preferred style",
-          "timestamp": "2026-08-14T14:49:52.597404+00:00"
+          "timestamp": "2026-08-19T21:50:52.914630+00:00"
         }
       ]
     },

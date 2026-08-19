@@ -28,17 +28,19 @@ with open("../data/buyer_profiles.json") as f:
 
 from typing import Optional
 _last_full_analysis = None
-def _search_listings_tool(min_bedrooms: int, max_budget: float, must_haves: Optional[list] = None, preferred_city: Optional[str] = None, k: int = 3, rejected_listing_ids: Optional[list] = None) -> list:
+def _search_listings_tool(min_bedrooms: int = 0, max_budget: Optional[float] = None, must_haves: Optional[list] = None, preferred_city: Optional[str] = None, k: int = 3, rejected_listing_ids: Optional[list] = None) -> list:
     """Search for property listings matching a buyer's criteria.
 
         Args:
-            min_bedrooms: Minimum number of bedrooms required.
-            max_budget: Maximum price the buyer will pay.
-            must_haves: List of short phrases describing required features, e.g. ["garage", "good school district"]. Optional.
+            min_bedrooms: Minimum number of bedrooms required. Defaults to 0 (no minimum) if the buyer didn't specify one.
+            max_budget: Maximum price the buyer will pay. Defaults to no cap if the buyer didn't specify one.            must_haves: List of short phrases describing required features, e.g. ["garage", "good school district"]. Optional.
             preferred_city: The city the buyer wants to live in, e.g. "Austin". Optional.
             k: Number of results to return, defaults to 3.
             rejected_listing_ids: List of listing IDs to exclude, defaults to none.
         """
+    if max_budget is None:
+        max_budget = 100_000_000  # effectively "no budget cap"
+
     buyer_preferences = {
         "min_bedrooms": min_bedrooms, "max_budget": max_budget,
         "must_haves": must_haves or [], "preferred_city": preferred_city,
@@ -80,7 +82,7 @@ def _search_listings_tool(min_bedrooms: int, max_budget: float, must_haves: Opti
     return output
 
 #llm = ChatGroq(model="openai/gpt-oss-120b")
-llm = ChatGroq(model="llama-3.3-70b-versatile")
+llm = ChatGroq(model="qwen/qwen3.6-27b")
 
 
 llm_with_tools = llm.bind_tools([
